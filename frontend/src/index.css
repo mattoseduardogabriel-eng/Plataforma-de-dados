@@ -22,6 +22,15 @@
     --brand-300: 15 121 90;
     --brand-400: 61 219 170;
     --brand-500: 34 192 140;
+
+    /* Cores de gráfico — trio categórico validado (contraste + separação
+       para daltonismo) contra a superfície do Card (--slate-100) em cada
+       tema. Ver skill de dataviz: scripts/validate_palette.js. Evitamos
+       verde+vermelho lado a lado (pior par pra deuteranopia); "despesas"
+       usa laranja em vez de vermelho por isso. */
+    --chart-receitas: 27 175 122;
+    --chart-despesas: 235 104 52;
+    --chart-saldo: 42 120 214;
   }
 
   .dark {
@@ -37,6 +46,10 @@
     --slate-900: 242 247 245;
 
     --brand-300: 110 231 196;
+
+    --chart-receitas: 25 158 112;
+    --chart-despesas: 217 89 38;
+    --chart-saldo: 57 135 229;
   }
 
   html {

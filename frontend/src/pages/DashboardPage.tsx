@@ -1,4 +1,15 @@
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  Area,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ReferenceLine,
+} from 'recharts';
 import { TrendingUp, Wallet, Users2, ShieldAlert } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, StatCard, Spinner, Badge } from '@/components/ui/primitives';
@@ -8,7 +19,17 @@ import { usePortfolioOverview } from '@/hooks/usePostSale';
 import { useAuditLogs } from '@/hooks/useReports';
 import { useAuth } from '@/lib/auth-context';
 import { cn, formatCurrency, formatDateTime } from '@/lib/utils';
-import { chartAxisStroke, chartGridStroke, chartTooltipItemStyle, chartTooltipLabelStyle, chartTooltipStyle } from '@/lib/chart-theme';
+import {
+  chartAxisStroke,
+  chartCursorStyle,
+  chartGridStroke,
+  chartLegendTextColor,
+  chartSeriesColor,
+  chartTooltipItemStyle,
+  chartTooltipLabelStyle,
+  chartTooltipStyle,
+} from '@/lib/chart-theme';
+import { makeEndValueDot } from '@/components/charts/EndValueDot';
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -62,25 +83,68 @@ export function DashboardPage() {
             {loadingCashFlow ? (
               <Spinner />
             ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={cashFlow?.series}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
+              <ResponsiveContainer width="100%" height={280}>
+                <ComposedChart data={cashFlow?.series} margin={{ top: 8, right: 92, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="fillReceitas" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={chartSeriesColor.receitas} stopOpacity={0.15} />
+                      <stop offset="100%" stopColor={chartSeriesColor.receitas} stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="fillDespesas" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={chartSeriesColor.despesas} stopOpacity={0.15} />
+                      <stop offset="100%" stopColor={chartSeriesColor.despesas} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke={chartGridStroke} vertical={false} />
                   <XAxis dataKey="month" tick={{ fontSize: 12, fill: chartAxisStroke }} stroke={chartAxisStroke} />
                   <YAxis
                     tick={{ fontSize: 12, fill: chartAxisStroke }}
                     stroke={chartAxisStroke}
                     tickFormatter={(v) => `${v / 1000}k`}
                   />
+                  <ReferenceLine y={0} stroke={chartAxisStroke} strokeOpacity={0.5} />
                   <Tooltip
                     formatter={(value: number) => formatCurrency(value)}
                     contentStyle={chartTooltipStyle}
                     labelStyle={chartTooltipLabelStyle}
                     itemStyle={chartTooltipItemStyle}
+                    cursor={chartCursorStyle}
                   />
-                  <Line type="monotone" dataKey="receitas" stroke="#3ddbaa" strokeWidth={2} name="Receitas" />
-                  <Line type="monotone" dataKey="despesas" stroke="#f87171" strokeWidth={2} name="Despesas" />
-                  <Line type="monotone" dataKey="saldo" stroke="#38bdf8" strokeWidth={2} name="Saldo" />
-                </LineChart>
+                  <Legend
+                    wrapperStyle={{ color: chartLegendTextColor, fontSize: 13 }}
+                    iconType="circle"
+                    iconSize={8}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="receitas"
+                    name="Receitas"
+                    stroke={chartSeriesColor.receitas}
+                    strokeWidth={2}
+                    fill="url(#fillReceitas)"
+                    dot={makeEndValueDot(chartSeriesColor.receitas, cashFlow?.series.length ?? 0, formatCurrency)}
+                    activeDot={{ r: 5 }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="despesas"
+                    name="Despesas"
+                    stroke={chartSeriesColor.despesas}
+                    strokeWidth={2}
+                    fill="url(#fillDespesas)"
+                    dot={makeEndValueDot(chartSeriesColor.despesas, cashFlow?.series.length ?? 0, formatCurrency)}
+                    activeDot={{ r: 5 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="saldo"
+                    name="Saldo"
+                    stroke={chartSeriesColor.saldo}
+                    strokeWidth={2}
+                    dot={makeEndValueDot(chartSeriesColor.saldo, cashFlow?.series.length ?? 0, formatCurrency)}
+                    activeDot={{ r: 5 }}
+                  />
+                </ComposedChart>
               </ResponsiveContainer>
             )}
           </CardContent>

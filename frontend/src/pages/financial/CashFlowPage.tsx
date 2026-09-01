@@ -1,9 +1,18 @@
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, Spinner, StatCard } from '@/components/ui/primitives';
 import { useCashFlow } from '@/hooks/useFinancial';
 import { formatCurrency } from '@/lib/utils';
-import { chartAxisStroke, chartGridStroke, chartTooltipItemStyle, chartTooltipLabelStyle, chartTooltipStyle } from '@/lib/chart-theme';
+import {
+  chartAxisStroke,
+  chartGridStroke,
+  chartLegendTextColor,
+  chartSeriesColor,
+  chartTooltipItemStyle,
+  chartTooltipLabelStyle,
+  chartTooltipStyle,
+} from '@/lib/chart-theme';
+import { makeEndValueDot } from '@/components/charts/EndValueDot';
 import { Wallet, AlertTriangle, TrendingUp, Clock } from 'lucide-react';
 
 export function CashFlowPage() {
@@ -50,8 +59,8 @@ export function CashFlowPage() {
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={340}>
-            <BarChart data={data.series}>
-              <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
+            <ComposedChart data={data.series} margin={{ top: 8, right: 92, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke={chartGridStroke} vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 12, fill: chartAxisStroke }} stroke={chartAxisStroke} />
               <YAxis
                 tick={{ fontSize: 12, fill: chartAxisStroke }}
@@ -63,11 +72,21 @@ export function CashFlowPage() {
                 contentStyle={chartTooltipStyle}
                 labelStyle={chartTooltipLabelStyle}
                 itemStyle={chartTooltipItemStyle}
+                cursor={{ fill: 'rgb(var(--slate-300) / 0.15)' }}
               />
-              <Legend wrapperStyle={{ color: '#aebcbc', fontSize: 13 }} />
-              <Bar dataKey="receitas" fill="#3ddbaa" name="Receitas" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="despesas" fill="#f87171" name="Despesas" radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <Legend wrapperStyle={{ color: chartLegendTextColor, fontSize: 13 }} iconType="circle" iconSize={8} />
+              <Bar dataKey="receitas" fill={chartSeriesColor.receitas} name="Receitas" radius={[4, 4, 0, 0]} barSize={20} />
+              <Bar dataKey="despesas" fill={chartSeriesColor.despesas} name="Despesas" radius={[4, 4, 0, 0]} barSize={20} />
+              <Line
+                type="monotone"
+                dataKey="saldo"
+                name="Saldo"
+                stroke={chartSeriesColor.saldo}
+                strokeWidth={2}
+                dot={makeEndValueDot(chartSeriesColor.saldo, data.series.length, formatCurrency)}
+                activeDot={{ r: 5 }}
+              />
+            </ComposedChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>
