@@ -16,6 +16,7 @@ RUN apk add --no-cache openssl
 ENV NODE_ENV=production
 COPY package*.json ./
 COPY prisma ./prisma
+COPY tsconfig.json ./tsconfig.json
 RUN npm install --omit=dev && npx prisma generate
 COPY --from=builder /app/dist ./dist
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
