@@ -51,28 +51,64 @@ Cada conector mock:
 
 ## 4. Como plugar um provedor real
 
-1. Contrate um provedor licenciado adequado ao seu caso de uso — por exemplo:
+Existem dois caminhos, e não são excludentes:
+
+### 4.1 Self-service, por organização (sem tocar em código)
+
+Cada organização usa o bureau que **ela mesma** contratou — a plataforma é
+multi-provedor por desenho, não tem um único provedor global fixo. Em
+**Configurações → Integrações → Provedor de Dados Pessoais**, um
+administrador:
+
+1. Contrata um provedor licenciado adequado ao caso de uso — por exemplo:
    - **Serasa Experian** ou **Boa Vista SCPC** — score de crédito, CPF/CNPJ.
    - **Big Data Corp** ou **Assertiva** — CPF, telefone, vínculos, KYC.
    - **Quod** — score de crédito (bureau positivo).
-2. Implemente a interface em um novo arquivo, por exemplo
-   `src/modules/data-intelligence/connectors/credit-score.serasa.connector.ts`:
-   ```ts
-   @Injectable()
-   export class SerasaCreditScoreConnector implements DataProvider<string, CreditScoreQueryResult> {
-     async query(document: string) {
-       // chamada HTTP autenticada à API do provedor contratado
-       return { provider: 'serasa-experian', isDemoData: false, data: { /* ... */ } };
-     }
-   }
-   ```
-3. Troque o binding em `data-intelligence.module.ts` (`CreditScoreConnector` →
-   `SerasaCreditScoreConnector`).
-4. Preencha as credenciais no `.env` (`CREDIT_BUREAU_API_KEY`,
-   `CREDIT_BUREAU_BASE_URL` — placeholders já previstos em `.env.example`).
-5. **Antes de ir ao ar**: revise a finalidade e a base legal de cada tipo de consulta
-   com seu jurídico/DPO, atualize a política de privacidade da empresa e garanta que o
-   contrato com o provedor cobre o uso pretendido (crédito, prevenção a fraude, etc.).
+2. Cola a Base URL e a chave de API fornecidas pelo provedor (cifradas com
+   AES-256-GCM antes de ir para o banco — ver
+   `src/common/crypto/secret-cipher.ts` — nunca gravadas em texto puro).
+3. Em "Configuração avançada", informa o caminho de cada tipo de consulta que
+   contratou (CPF, telefone, score, parentes), com o placeholder `{documento}`
+   marcando onde o CPF consultado entra na URL — ex.: `/pessoas/{documento}/score`.
+   Só os tipos preenchidos passam a ser reais; o restante continua em modo
+   demonstração para aquela organização.
+4. Clica em **Conectar** — a plataforma testa a credencial contra a API real
+   antes de salvar.
+
+Isso é implementado pelo conector genérico
+(`src/modules/integrations/personal-data-provider/personal-data-provider.connector.ts`):
+ele assume o formato mais comum de API REST (GET com o documento na URL,
+chave num header) e devolve a resposta do provedor sem tentar adivinhar seu
+formato — por isso o campo de resultado na tela de consulta mostra o payload
+bruto quando o provedor é "Genérico"/API própria.
+
+### 4.2 Conector dedicado (quando você tem a documentação exata do provedor)
+
+Quando o formato do 4.1 não é suficiente — o provedor usa POST, autenticação
+por certificado, um contrato de resposta que vale a pena normalizar nas telas
+— implemente a interface `DataProvider` num arquivo dedicado, o mesmo padrão
+já usado para CNPJ (`cnpj.connector.ts`) e para a integração com o Liro CRM
+(`liro-crm.connector.ts`):
+
+```ts
+@Injectable()
+export class SerasaCreditScoreConnector implements DataProvider<string, CreditScoreQueryResult> {
+  async query(document: string) {
+    // chamada HTTP autenticada à API do provedor contratado
+    return { provider: 'serasa-experian', isDemoData: false, data: { /* ... */ } };
+  }
+}
+```
+
+Troque o binding correspondente em `data-intelligence.service.ts`. Nenhum
+controller, DTO ou tela precisa mudar.
+
+### 4.3 Antes de ir ao ar, pelos dois caminhos
+
+Revise a finalidade e a base legal de cada tipo de consulta com seu
+jurídico/DPO, atualize a política de privacidade da empresa e garanta que o
+contrato com o provedor cobre o uso pretendido (crédito, prevenção a fraude,
+etc.).
 
 ## 5. O que já está embutido para conformidade
 

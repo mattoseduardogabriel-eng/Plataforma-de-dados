@@ -290,3 +290,39 @@ export interface LiroCrmSyncResult {
   updated: number;
   total: number;
 }
+
+export const PERSONAL_DATA_PROVIDERS = [
+  'SERASA',
+  'BOA_VISTA',
+  'BIG_DATA_CORP',
+  'ASSERTIVA',
+  'QUOD',
+  'GENERICO',
+] as const;
+export type PersonalDataProviderName = (typeof PERSONAL_DATA_PROVIDERS)[number];
+
+export type PersonalDataProviderStatus =
+  | { configured: false }
+  | {
+      configured: true;
+      provider: PersonalDataProviderName;
+      baseUrl: string;
+      apiKeySuffix: string;
+      cpfConfigured: boolean;
+      phoneConfigured: boolean;
+      creditScoreConfigured: boolean;
+      relativesConfigured: boolean;
+      updatedAt: string;
+    };
+
+export interface SavePersonalDataProviderPayload {
+  provider: PersonalDataProviderName;
+  baseUrl: string;
+  apiKey: string;
+  authHeaderName?: string;
+  authScheme?: string;
+  cpfPath?: string;
+  phonePath?: string;
+  creditScorePath?: string;
+  relativesPath?: string;
+}

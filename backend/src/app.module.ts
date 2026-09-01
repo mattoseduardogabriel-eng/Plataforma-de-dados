@@ -16,6 +16,7 @@ import { DataIntelligenceModule } from './modules/data-intelligence/data-intelli
 import { ReportsModule } from './modules/reports/reports.module';
 import { CrivoModule } from './modules/crivo/crivo.module';
 import { LiroCrmModule } from './modules/integrations/liro-crm/liro-crm.module';
+import { PersonalDataProviderModule } from './modules/integrations/personal-data-provider/personal-data-provider.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { LiroCrmModule } from './modules/integrations/liro-crm/liro-crm.module';
     ReportsModule,
     CrivoModule,
     LiroCrmModule,
+    PersonalDataProviderModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

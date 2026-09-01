@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/toast';
 import { extractErrorMessage } from '@/lib/auth-context';
 import { LiroCrmIntegrationCard } from './LiroCrmIntegrationCard';
+import { PersonalDataProviderCard } from './PersonalDataProviderCard';
 import type { Role } from '@/types';
 
 const ROLES: Role[] = ['ADMIN', 'GESTOR', 'VENDEDOR', 'FINANCEIRO', 'ATENDIMENTO', 'ANALISTA'];
@@ -141,7 +142,12 @@ export function SettingsPage() {
         </Card>
       )}
 
-      {tab === 'integracoes' && <LiroCrmIntegrationCard isAdmin={isAdmin} />}
+      {tab === 'integracoes' && (
+        <div className="space-y-6">
+          <PersonalDataProviderCard isAdmin={isAdmin} />
+          <LiroCrmIntegrationCard isAdmin={isAdmin} />
+        </div>
+      )}
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title="Novo usuário">
         <form onSubmit={onCreateUser} className="space-y-4">

@@ -8,9 +8,10 @@ import { PhoneConnector } from './connectors/phone.connector';
 import { CreditScoreConnector } from './connectors/credit-score.connector';
 import { RelativesConnector } from './connectors/relatives.connector';
 import { AuditModule } from '../audit/audit.module';
+import { PersonalDataProviderModule } from '../integrations/personal-data-provider/personal-data-provider.module';
 
 @Module({
-  imports: [HttpModule, AuditModule],
+  imports: [HttpModule, AuditModule, PersonalDataProviderModule],
   controllers: [DataIntelligenceController],
   providers: [
     DataIntelligenceService,

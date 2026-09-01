@@ -53,6 +53,7 @@ administrativos (gestão de usuários, políticas de crédito).
 | `crivo` | `PoliciesService` (CRUD de `CreditPolicy`) + `CrivoService.evaluate` (motor de decisão) |
 | `reports` | Cruzamento de dados internos + conectores em um `Report`, exportável em CSV |
 | `integrations/liro-crm` | Cliente da API externa do Liro CRM (`LiroCrmConnector`), credenciais cifradas por organização, sincronização de contatos→leads e espelhamento de decisões do Crivo como tags — ver [`docs/INTEGRACAO-LIRO-CRM.md`](./INTEGRACAO-LIRO-CRM.md) |
+| `integrations/personal-data-provider` | Config, por organização, do bureau real de CPF/telefone/score/parentes (Serasa, Boa Vista, Big Data Corp, Assertiva, Quod ou API própria) — credenciais cifradas, caminho de cada tipo de consulta configurável, conector genérico que chama a API real quando configurada — ver [`docs/LGPD-E-FONTES-DE-DADOS.md`](./LGPD-E-FONTES-DE-DADOS.md#41-self-service-por-organização-sem-tocar-em-código) |
 
 ### Conectores de dados (`src/modules/data-intelligence/connectors`)
 
@@ -68,11 +69,17 @@ interface DataProvider<TInput, TOutput> {
 - `cnpj.connector.ts` — chama a BrasilAPI (dado público oficial da Receita Federal).
 - `cpf.connector.ts`, `phone.connector.ts`, `credit-score.connector.ts`,
   `relatives.connector.ts` — implementações **mock**, deterministas (mesmo documento →
-  mesmo resultado), claramente marcadas `isDemoData: true`.
+  mesmo resultado), claramente marcadas `isDemoData: true`. É o fallback quando a
+  organização não configurou um provedor real para aquele tipo de consulta.
 
-Trocar um mock por um provedor real é criar uma nova classe que implementa a mesma
-interface e trocar o binding no `data-intelligence.module.ts` — nenhum controller, DTO
-ou tela muda. Detalhes em [`LGPD-E-FONTES-DE-DADOS.md`](./LGPD-E-FONTES-DE-DADOS.md).
+Antes de cair no mock, `DataIntelligenceService` consulta
+`PersonalDataProviderService.resolveQuery(...)` — se a organização tiver configurado um
+provedor real (Configurações → Integrações) para aquele tipo específico, a consulta vai
+para a API real e nunca cai silenciosamente no mock em caso de erro (ver
+`integrations/personal-data-provider`). Trocar um mock por um provedor real também pode
+ser feito criando uma nova classe que implementa a mesma interface e trocando o binding
+no `data-intelligence.service.ts` — nenhum controller, DTO ou tela muda. Detalhes em
+[`LGPD-E-FONTES-DE-DADOS.md`](./LGPD-E-FONTES-DE-DADOS.md).
 
 ### Modelo de dados
 

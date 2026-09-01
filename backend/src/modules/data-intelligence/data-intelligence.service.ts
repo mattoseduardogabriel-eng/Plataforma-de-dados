@@ -8,6 +8,7 @@ import { PhoneConnector } from './connectors/phone.connector';
 import { CreditScoreConnector } from './connectors/credit-score.connector';
 import { RelativesConnector } from './connectors/relatives.connector';
 import { DataProviderResult } from './connectors/data-provider.interface';
+import { PersonalDataProviderService } from '../integrations/personal-data-provider/personal-data-provider.service';
 
 const CNPJ_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h — dado público, mas evita martelar a API externa
 
@@ -30,6 +31,7 @@ export class DataIntelligenceService {
     private readonly phoneConnector: PhoneConnector,
     private readonly creditScoreConnector: CreditScoreConnector,
     private readonly relativesConnector: RelativesConnector,
+    private readonly personalDataProviderService: PersonalDataProviderService,
   ) {}
 
   async queryCnpj(opts: Omit<RunQueryOptions, 'type'>) {
@@ -59,25 +61,29 @@ export class DataIntelligenceService {
   }
 
   async queryCpf(opts: Omit<RunQueryOptions, 'type'>) {
-    const result = await this.cpfConnector.query(opts.target);
+    const real = await this.personalDataProviderService.resolveQuery(opts.organizationId, 'cpf', opts.target);
+    const result = real ?? (await this.cpfConnector.query(opts.target));
     await this.persist({ ...opts, type: 'CPF' }, result);
     return result;
   }
 
   async queryPhone(opts: Omit<RunQueryOptions, 'type'>) {
-    const result = await this.phoneConnector.query(opts.target);
+    const real = await this.personalDataProviderService.resolveQuery(opts.organizationId, 'phone', opts.target);
+    const result = real ?? (await this.phoneConnector.query(opts.target));
     await this.persist({ ...opts, type: 'TELEFONE' }, result);
     return result;
   }
 
   async queryCreditScore(opts: Omit<RunQueryOptions, 'type'>) {
-    const result = await this.creditScoreConnector.query(opts.target);
+    const real = await this.personalDataProviderService.resolveQuery(opts.organizationId, 'creditScore', opts.target);
+    const result = real ?? (await this.creditScoreConnector.query(opts.target));
     await this.persist({ ...opts, type: 'CREDITO' }, result);
     return result;
   }
 
   async queryRelatives(opts: Omit<RunQueryOptions, 'type'>) {
-    const result = await this.relativesConnector.query(opts.target);
+    const real = await this.personalDataProviderService.resolveQuery(opts.organizationId, 'relatives', opts.target);
+    const result = real ?? (await this.relativesConnector.query(opts.target));
     await this.persist({ ...opts, type: 'PARENTES' }, result);
     return result;
   }

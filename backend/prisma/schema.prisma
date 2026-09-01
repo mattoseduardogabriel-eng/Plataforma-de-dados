@@ -28,6 +28,8 @@ model Organization {
   liroCrmBaseUrl         String?
   liroCrmLastSyncedAt    DateTime?
 
+  personalDataProviderConfig PersonalDataProviderConfig?
+
   users             User[]
   auditLogs         AuditLog[]
   pipelines         Pipeline[]
@@ -447,6 +449,37 @@ model DataQuery {
   @@index([organizationId, type, targetDocument])
   @@index([organizationId, createdAt])
   @@map("data_queries")
+}
+
+// Config do provedor de dados pessoais (CPF/telefone/score/parentes) por
+// organização — cada organização usa o bureau (e o contrato) que ela mesma
+// fechou. A chave é cifrada (ver src/common/crypto/secret-cipher.ts), nunca
+// gravada em texto puro. Sem config aqui, a consulta cai no conector mock
+// (modo demonstração) — ver docs/LGPD-E-FONTES-DE-DADOS.md.
+model PersonalDataProviderConfig {
+  id             String @id @default(uuid())
+  organizationId String @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // "SERASA" | "BOA_VISTA" | "BIG_DATA_CORP" | "ASSERTIVA" | "QUOD" | "GENERICO"
+  provider        String
+  baseUrl         String
+  apiKeyEncrypted String
+  authHeaderName  String  @default("Authorization")
+  authScheme      String  @default("Bearer") // prefixo antes da chave no header; "" para nenhum
+
+  // Caminho de cada tipo de consulta, com o placeholder {documento}
+  // (ex.: "/pessoas/{documento}/score"). Nulo = esse tipo continua em modo
+  // demonstração mesmo com o provedor configurado.
+  cpfPath         String?
+  phonePath       String?
+  creditScorePath String?
+  relativesPath   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("personal_data_provider_configs")
 }
 
 enum ReportTargetType {
