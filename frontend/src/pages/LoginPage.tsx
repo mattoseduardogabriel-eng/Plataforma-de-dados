@@ -1,0 +1,82 @@
+import { useState } from 'react';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Database } from 'lucide-react';
+import { useAuth, extractErrorMessage } from '@/lib/auth-context';
+import { Button, Card, Input, Label, Alert } from '@/components/ui/primitives';
+
+export function LoginPage() {
+  const { login, user, loading } = useAuth();
+  const navigate = useNavigate();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  if (!loading && user) {
+    return <Navigate to="/" replace />;
+  }
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await login({ email, password });
+      navigate('/');
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Não foi possível entrar. Verifique suas credenciais.'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 flex flex-col items-center gap-2 text-center">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600 text-white">
+            <Database className="h-5 w-5" />
+          </div>
+          <h1 className="text-lg font-semibold text-slate-900">Plataforma de Dados</h1>
+          <p className="text-sm text-slate-500">CRM, financeiro, pós-venda e inteligência de dados</p>
+        </div>
+        <Card className="p-6">
+          <form onSubmit={onSubmit} className="space-y-4">
+            {error && <Alert tone="danger">{error}</Alert>}
+            <div>
+              <Label htmlFor="email">E-mail</Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="voce@empresa.com.br"
+              />
+            </div>
+            <div>
+              <Label htmlFor="password">Senha</Label>
+              <Input
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
+            <Button type="submit" className="w-full" loading={submitting}>
+              Entrar
+            </Button>
+          </form>
+        </Card>
+        <p className="mt-4 text-center text-sm text-slate-500">
+          Ainda não tem uma organização?{' '}
+          <Link to="/registrar" className="font-medium text-brand-600 hover:underline">
+            Criar agora
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
+}

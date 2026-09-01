@@ -1,0 +1,187 @@
+import { useState } from 'react';
+import { Plus } from 'lucide-react';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { Button, Card, Input, Label, Select, Spinner, Badge, EmptyState } from '@/components/ui/primitives';
+import { Table, Thead, Tbody, Tr, Th, Td } from '@/components/ui/table';
+import { Dialog } from '@/components/ui/dialog';
+import { useTransactions, useCreateTransaction, useUpdateTransaction, useCategories, useCreateCategory } from '@/hooks/useFinancial';
+import { useToast } from '@/components/ui/toast';
+import { extractErrorMessage } from '@/lib/auth-context';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import type { FinanceType, TransactionStatus } from '@/types';
+
+const STATUS_TONE: Record<TransactionStatus, 'neutral' | 'success' | 'warning' | 'danger'> = {
+  PENDENTE: 'warning',
+  PAGO: 'success',
+  ATRASADO: 'danger',
+  CANCELADO: 'neutral',
+};
+
+export function TransactionsPage() {
+  const [typeFilter, setTypeFilter] = useState('');
+  const { data: transactions, isLoading } = useTransactions({ type: typeFilter || undefined });
+  const { data: categories } = useCategories();
+  const createTransaction = useCreateTransaction();
+  const updateTransaction = useUpdateTransaction();
+  const createCategory = useCreateCategory();
+  const { toast } = useToast();
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [form, setForm] = useState({
+    type: 'RECEITA' as FinanceType,
+    description: '',
+    amount: '',
+    dueDate: '',
+    categoryId: '',
+  });
+  const [newCategory, setNewCategory] = useState('');
+
+  const onCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await createTransaction.mutateAsync({
+        ...form,
+        amount: Number(form.amount),
+        categoryId: form.categoryId || undefined,
+      });
+      toast({ tone: 'success', title: 'Lançamento criado' });
+      setDialogOpen(false);
+      setForm({ type: 'RECEITA', description: '', amount: '', dueDate: '', categoryId: '' });
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao criar lançamento', description: extractErrorMessage(err) });
+    }
+  };
+
+  const onCreateCategory = async () => {
+    if (!newCategory.trim()) return;
+    try {
+      const category = await createCategory.mutateAsync({ name: newCategory, type: form.type });
+      setForm((f) => ({ ...f, categoryId: category.id }));
+      setNewCategory('');
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao criar categoria', description: extractErrorMessage(err) });
+    }
+  };
+
+  const markPaid = async (id: string) => {
+    try {
+      await updateTransaction.mutateAsync({ id, status: 'PAGO' });
+      toast({ tone: 'success', title: 'Lançamento marcado como pago' });
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao atualizar', description: extractErrorMessage(err) });
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title="Lançamentos Financeiros"
+        description="Receitas e despesas da operação"
+        actions={
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4" /> Novo lançamento
+          </Button>
+        }
+      />
+
+      <Card className="mb-4 flex items-center gap-3 p-4">
+        <Select className="w-52" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+          <option value="">Todos os tipos</option>
+          <option value="RECEITA">Receitas</option>
+          <option value="DESPESA">Despesas</option>
+        </Select>
+      </Card>
+
+      {isLoading ? (
+        <Spinner />
+      ) : !transactions?.length ? (
+        <EmptyState title="Nenhum lançamento" description="Registre receitas e despesas para acompanhar o caixa." />
+      ) : (
+        <Table>
+          <Thead>
+            <Tr>
+              <Th>Descrição</Th>
+              <Th>Categoria</Th>
+              <Th>Tipo</Th>
+              <Th>Valor</Th>
+              <Th>Vencimento</Th>
+              <Th>Status</Th>
+              <Th></Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {transactions.map((tx) => (
+              <Tr key={tx.id}>
+                <Td className="font-medium text-slate-900">{tx.description}</Td>
+                <Td>{tx.category?.name ?? '—'}</Td>
+                <Td>
+                  <Badge tone={tx.type === 'RECEITA' ? 'success' : 'danger'}>{tx.type}</Badge>
+                </Td>
+                <Td className={tx.type === 'RECEITA' ? 'text-emerald-600' : 'text-red-600'}>
+                  {formatCurrency(tx.amount)}
+                </Td>
+                <Td>{formatDate(tx.dueDate)}</Td>
+                <Td>
+                  <Badge tone={STATUS_TONE[tx.status]}>{tx.status}</Badge>
+                </Td>
+                <Td>
+                  {tx.status === 'PENDENTE' && (
+                    <button className="text-xs font-medium text-brand-600 hover:underline" onClick={() => markPaid(tx.id)}>
+                      Marcar como pago
+                    </button>
+                  )}
+                </Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      )}
+
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title="Novo lançamento">
+        <form onSubmit={onCreate} className="space-y-4">
+          <div>
+            <Label>Tipo</Label>
+            <Select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as FinanceType }))}>
+              <option value="RECEITA">Receita</option>
+              <option value="DESPESA">Despesa</option>
+            </Select>
+          </div>
+          <div>
+            <Label>Descrição</Label>
+            <Input required value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Valor (R$)</Label>
+              <Input type="number" step="0.01" min="0" required value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Vencimento</Label>
+              <Input type="date" required value={form.dueDate} onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))} />
+            </div>
+          </div>
+          <div>
+            <Label>Categoria</Label>
+            <div className="flex gap-2">
+              <Select className="flex-1" value={form.categoryId} onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}>
+                <option value="">Sem categoria</option>
+                {categories?.filter((c) => c.type === form.type).map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </Select>
+            </div>
+            <div className="mt-2 flex gap-2">
+              <Input placeholder="Nova categoria" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} />
+              <Button type="button" variant="outline" onClick={onCreateCategory}>
+                Adicionar
+              </Button>
+            </div>
+          </div>
+          <Button type="submit" className="w-full" loading={createTransaction.isPending}>
+            Criar lançamento
+          </Button>
+        </form>
+      </Dialog>
+    </div>
+  );
+}

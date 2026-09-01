@@ -1,0 +1,520 @@
+// Plataforma de Dados — schema Prisma
+// Multi-tenant: toda entidade de negócio pertence a uma Organization.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Núcleo: organização, usuários, auditoria
+// ────────────────────────────────────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  cnpj      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users             User[]
+  auditLogs         AuditLog[]
+  pipelines         Pipeline[]
+  leads             Lead[]
+  deals             Deal[]
+  activities        Activity[]
+  categories        Category[]
+  transactions      Transaction[]
+  customers         Customer[]
+  contracts         Contract[]
+  interactions      InteractionHistory[]
+  churnSignals      ChurnSignal[]
+  dataQueries       DataQuery[]
+  reports           Report[]
+  creditPolicies    CreditPolicy[]
+  crivoDecisions    CrivoDecision[]
+
+  @@map("organizations")
+}
+
+enum Role {
+  ADMIN
+  GESTOR
+  VENDEDOR
+  FINANCEIRO
+  ATENDIMENTO
+  ANALISTA
+}
+
+model User {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name                String
+  email               String   @unique
+  passwordHash        String
+  role                Role     @default(VENDEDOR)
+  active              Boolean  @default(true)
+  hashedRefreshToken  String?
+  tokenVersion        Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  auditLogs           AuditLog[]
+  leadsCreated        Lead[]        @relation("LeadCreatedBy")
+  leadsAssigned       Lead[]        @relation("LeadAssignedTo")
+  dealsOwned          Deal[]        @relation("DealOwner")
+  activitiesCreated   Activity[]    @relation("ActivityCreatedBy")
+  activitiesAssigned  Activity[]    @relation("ActivityAssignedTo")
+  transactionsCreated Transaction[]
+  interactions        InteractionHistory[]
+  dataQueries         DataQuery[]
+  reports             Report[]
+  crivoDecisions      CrivoDecision[]
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action         String
+  entityType     String
+  entityId       String?
+  purpose        String?
+  metadata       Json?
+  ipAddress      String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType])
+  @@map("audit_logs")
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// CRM: funil de vendas
+// ────────────────────────────────────────────────────────────────────────
+
+model Pipeline {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  stages PipelineStage[]
+  deals  Deal[]
+
+  @@index([organizationId])
+  @@map("pipelines")
+}
+
+model PipelineStage {
+  id         String   @id @default(uuid())
+  pipelineId String
+  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name       String
+  order      Int
+  colorHex   String   @default("#6366f1")
+  isWon      Boolean  @default(false)
+  isLost     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  deals Deal[]
+
+  @@index([pipelineId])
+  @@map("pipeline_stages")
+}
+
+enum DocumentType {
+  CPF
+  CNPJ
+}
+
+enum LeadStatus {
+  NOVO
+  QUALIFICANDO
+  DESCARTADO
+  CONVERTIDO
+}
+
+model Lead {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  document       String?
+  documentType   DocumentType?
+  email          String?
+  phone          String?
+  companyName    String?
+  source         String?
+  status         LeadStatus @default(NOVO)
+  assignedToId   String?
+  assignedTo     User?    @relation("LeadAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdById    String
+  createdBy      User     @relation("LeadCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  deals      Deal[]
+  activities Activity[]
+
+  @@index([organizationId, status])
+  @@map("leads")
+}
+
+enum DealStatus {
+  ABERTO
+  GANHO
+  PERDIDO
+}
+
+model Deal {
+  id                String   @id @default(uuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId            String?
+  lead              Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  pipelineId        String
+  pipeline          Pipeline @relation(fields: [pipelineId], references: [id])
+  stageId           String
+  stage             PipelineStage @relation(fields: [stageId], references: [id])
+  title             String
+  value             Decimal  @default(0) @db.Decimal(14, 2)
+  productPlan       String?
+  ownerId           String
+  owner             User     @relation("DealOwner", fields: [ownerId], references: [id])
+  expectedCloseDate DateTime?
+  status            DealStatus @default(ABERTO)
+  lostReason        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  closedAt          DateTime?
+
+  activities Activity[]
+  customer   Customer?
+
+  @@index([organizationId, status])
+  @@index([stageId])
+  @@map("deals")
+}
+
+enum ActivityType {
+  LIGACAO
+  REUNIAO
+  EMAIL
+  PROPOSTA
+  TAREFA
+  NOTA
+}
+
+model Activity {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dealId         String?
+  deal           Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  leadId         String?
+  lead           Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type           ActivityType
+  title          String
+  notes          String?
+  dueDate        DateTime?
+  doneAt         DateTime?
+  createdById    String
+  createdBy      User     @relation("ActivityCreatedBy", fields: [createdById], references: [id])
+  assignedToId   String?
+  assignedTo     User?    @relation("ActivityAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([dealId])
+  @@map("activities")
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Financeiro
+// ────────────────────────────────────────────────────────────────────────
+
+enum FinanceType {
+  RECEITA
+  DESPESA
+}
+
+model Category {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  type           FinanceType
+  createdAt      DateTime @default(now())
+
+  transactions Transaction[]
+
+  @@index([organizationId])
+  @@map("categories")
+}
+
+enum TransactionStatus {
+  PENDENTE
+  PAGO
+  ATRASADO
+  CANCELADO
+}
+
+model Transaction {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  categoryId     String?
+  category       Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  type           FinanceType
+  description    String
+  amount         Decimal  @db.Decimal(14, 2)
+  dueDate        DateTime
+  paidAt         DateTime?
+  status         TransactionStatus @default(PENDENTE)
+  customerId     String?
+  customer       Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId, type, status])
+  @@index([organizationId, dueDate])
+  @@map("transactions")
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Pós-venda / relacionamento
+// ────────────────────────────────────────────────────────────────────────
+
+enum CustomerStatus {
+  ATIVO
+  INATIVO
+  SUSPENSO
+  CANCELADO
+}
+
+enum ChurnRiskLevel {
+  BAIXO
+  MEDIO
+  ALTO
+}
+
+model Customer {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name               String
+  document           String?
+  documentType       DocumentType?
+  email              String?
+  phone              String?
+  address            String?
+  planName           String?
+  monthlyValue       Decimal? @db.Decimal(14, 2)
+  contractStartDate  DateTime?
+  status             CustomerStatus @default(ATIVO)
+  churnRiskScore     Int?
+  churnRiskLevel     ChurnRiskLevel?
+  dealId             String?  @unique
+  deal               Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  contracts    Contract[]
+  interactions InteractionHistory[]
+  churnSignals ChurnSignal[]
+  transactions Transaction[]
+
+  @@index([organizationId, status])
+  @@map("customers")
+}
+
+enum ContractStatus {
+  ATIVO
+  ENCERRADO
+  RENOVADO
+}
+
+model Contract {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  planName       String
+  value          Decimal  @db.Decimal(14, 2)
+  startDate      DateTime
+  endDate        DateTime?
+  status         ContractStatus @default(ATIVO)
+  fileUrl        String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, customerId])
+  @@map("contracts")
+}
+
+enum InteractionType {
+  LIGACAO
+  EMAIL
+  CHAT
+  VISITA
+  RECLAMACAO
+  ELOGIO
+}
+
+model InteractionHistory {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type           InteractionType
+  summary        String
+  notes          String?
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, customerId])
+  @@map("interaction_history")
+}
+
+model ChurnSignal {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  signalType     String
+  weight         Int      @default(1)
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, customerId])
+  @@map("churn_signals")
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Inteligência de dados: consultas e cruzamentos
+// ────────────────────────────────────────────────────────────────────────
+
+enum DataQueryType {
+  CNPJ
+  CPF
+  TELEFONE
+  CREDITO
+  PARENTES
+}
+
+model DataQuery {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedById  String
+  requestedBy    User     @relation(fields: [requestedById], references: [id])
+  type           DataQueryType
+  targetDocument String
+  purpose        String
+  provider       String
+  isDemoData     Boolean  @default(true)
+  resultJson     Json
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime?
+
+  @@index([organizationId, type, targetDocument])
+  @@index([organizationId, createdAt])
+  @@map("data_queries")
+}
+
+enum ReportTargetType {
+  CNPJ
+  CPF
+}
+
+model Report {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title          String
+  targetDocument String
+  targetType     ReportTargetType
+  summaryJson    Json
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("reports")
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Crivo: motor de decisão de crédito (policy engine)
+// ────────────────────────────────────────────────────────────────────────
+
+// Política de crédito configurável pela organização. Combina o score
+// simulado, pendências e situação cadastral (CNPJ) para decidir aprovação,
+// reprovação ou análise manual — e sugerir um limite de crédito inicial.
+model CreditPolicy {
+  id                        String   @id @default(uuid())
+  organizationId            String
+  organization              Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name                      String
+  active                    Boolean  @default(true)
+  isDefault                 Boolean  @default(false)
+  minScoreApproved          Int      @default(700)
+  minScoreManualReview      Int      @default(400)
+  maxPendenciasAllowed      Int      @default(0)
+  blockIfCnpjInativa        Boolean  @default(true)
+  flagIfChurnRiskAlto       Boolean  @default(true)
+  creditLimitPerScorePoint  Decimal  @default(10) @db.Decimal(10, 2)
+  maxCreditLimit            Decimal  @default(50000) @db.Decimal(14, 2)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  decisions CrivoDecision[]
+
+  @@index([organizationId])
+  @@map("credit_policies")
+}
+
+enum CrivoOutcome {
+  APROVADO
+  REPROVADO
+  ANALISE_MANUAL
+}
+
+model CrivoDecision {
+  id                   String   @id @default(uuid())
+  organizationId       String
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  policyId             String?
+  policy               CreditPolicy? @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  targetDocument       String
+  targetType           ReportTargetType
+  outcome              CrivoOutcome
+  scoreUsed            Int?
+  suggestedCreditLimit Decimal? @db.Decimal(14, 2)
+  reasons              Json
+  purpose              String
+  requestedById        String
+  requestedBy          User     @relation(fields: [requestedById], references: [id])
+  createdAt            DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, targetDocument])
+  @@map("crivo_decisions")
+}
