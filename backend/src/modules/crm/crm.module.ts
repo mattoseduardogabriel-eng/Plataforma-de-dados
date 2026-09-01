@@ -9,6 +9,8 @@ import { ActivitiesService } from './activities.service';
 import { ActivitiesController } from './activities.controller';
 import { CrmDashboardService } from './crm-dashboard.service';
 import { CrmDashboardController } from './crm-dashboard.controller';
+import { SectorsService } from './sectors.service';
+import { SectorsController } from './sectors.controller';
 
 @Module({
   controllers: [
@@ -17,6 +19,7 @@ import { CrmDashboardController } from './crm-dashboard.controller';
     DealsController,
     ActivitiesController,
     CrmDashboardController,
+    SectorsController,
   ],
   providers: [
     PipelinesService,
@@ -24,6 +27,7 @@ import { CrmDashboardController } from './crm-dashboard.controller';
     DealsService,
     ActivitiesService,
     CrmDashboardService,
+    SectorsService,
   ],
 })
 export class CrmModule {}

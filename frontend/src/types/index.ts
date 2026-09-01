@@ -49,7 +49,11 @@ export interface Lead {
   source?: string | null;
   status: LeadStatus;
   liroContactId?: string | null;
+  liroOperatorName?: string | null;
   assignedTo?: { id: string; name: string } | null;
+  sectorId?: string | null;
+  sector?: { id: string; name: string } | null;
+  additionalAssignees?: { userId: string; user: { id: string; name: string } }[];
   createdAt: string;
 }
 

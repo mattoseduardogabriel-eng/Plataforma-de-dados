@@ -5,6 +5,28 @@ import { SecretCipher } from '../../../common/crypto/secret-cipher';
 import { AuditService } from '../../audit/audit.service';
 import { LiroCrmConnector, LiroCredentials } from './liro-crm.connector';
 import { SaveLiroCrmCredentialsDto } from './dto/save-credentials.dto';
+import { LiroContact } from './liro-crm.connector';
+
+/**
+ * Extrai o nome do operador/atendente responsável pelo contato no Liro CRM,
+ * de forma best-effort — a "API externa" documentada não define esse campo
+ * explicitamente, então tentamos os nomes mais prováveis que a resposta
+ * pode trazer. Sem contrato oficial, isso é só informativo (exibido no
+ * lead), nunca usado pra decidir nada. Ajustar aqui se o nome real do
+ * campo, quando confirmado com a documentação do Liro, for diferente.
+ */
+function extractOperatorName(contact: LiroContact): string | undefined {
+  const candidates = [
+    contact.operatorName,
+    contact.operator,
+    contact.responsibleName,
+    contact.responsavel,
+    contact.assignedOperator,
+    contact.attendantName,
+  ];
+  const found = candidates.find((v) => typeof v === 'string' && v.trim().length > 0);
+  return typeof found === 'string' ? found : undefined;
+}
 
 @Injectable()
 export class LiroCrmService {
@@ -102,6 +124,7 @@ export class LiroCrmService {
 
       const documentType: DocumentType | undefined = contact.cnpj ? 'CNPJ' : contact.cpf ? 'CPF' : undefined;
       const document = contact.cnpj ?? contact.cpf ?? undefined;
+      const operatorName = extractOperatorName(contact);
 
       const existing = await this.prisma.lead.findFirst({
         where: {
@@ -119,6 +142,7 @@ export class LiroCrmService {
             document: document ?? existing.document,
             documentType: documentType ?? existing.documentType,
             liroContactId: contact.id,
+            liroOperatorName: operatorName ?? existing.liroOperatorName,
           },
         });
         updated += 1;
@@ -133,6 +157,7 @@ export class LiroCrmService {
             documentType,
             source: 'Liro CRM',
             liroContactId: contact.id,
+            liroOperatorName: operatorName,
             createdById: userId,
           },
         });

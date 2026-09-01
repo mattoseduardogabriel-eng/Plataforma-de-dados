@@ -32,6 +32,46 @@ export function useCreateLead() {
   });
 }
 
+export function useUpdateLead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & Record<string, unknown>) =>
+      (await api.patch(`/crm/leads/${id}`, payload)).data,
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['crm', 'leads'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'leads', variables.id] });
+    },
+  });
+}
+
+export interface Sector {
+  id: string;
+  name: string;
+}
+
+export function useSectors() {
+  return useQuery({
+    queryKey: ['crm', 'sectors'],
+    queryFn: async () => (await api.get<Sector[]>('/crm/sectors')).data,
+  });
+}
+
+export function useCreateSector() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string) => (await api.post<Sector>('/crm/sectors', { name })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm', 'sectors'] }),
+  });
+}
+
+export function useDeleteSector() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/crm/sectors/${id}`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm', 'sectors'] }),
+  });
+}
+
 export function useDeals(params: { pipelineId?: string; stageId?: string; status?: string } = {}) {
   return useQuery({
     queryKey: ['crm', 'deals', params],

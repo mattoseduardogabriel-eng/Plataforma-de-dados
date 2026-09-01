@@ -1,6 +1,6 @@
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 import { DocumentType, LeadStatus } from '@prisma/client';
-import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateLeadDto {
   @ApiProperty({ example: 'Padaria Pão Quente Ltda' })
@@ -43,8 +43,23 @@ export class CreateLeadDto {
   @IsEnum(LeadStatus)
   status?: LeadStatus;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Responsável principal do lead' })
   @IsOptional()
   @IsString()
   assignedToId?: string;
+
+  @ApiPropertyOptional({ description: 'Setor/equipe responsável' })
+  @IsOptional()
+  @IsString()
+  sectorId?: string;
+
+  @ApiPropertyOptional({
+    description: 'IDs de pessoas adicionais atribuídas ao lead, além do responsável principal (assignedToId) — um contato pode ter mais de uma pessoa atribuída.',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  additionalAssigneeIds?: string[];
 }

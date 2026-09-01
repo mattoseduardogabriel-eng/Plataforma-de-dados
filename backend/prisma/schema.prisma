@@ -47,6 +47,7 @@ model Organization {
   creditPolicies    CreditPolicy[]
   crivoDecisions    CrivoDecision[]
   customerFieldDefinitions CustomerFieldDefinition[]
+  sectors                  OrganizationSector[]
 
   @@map("organizations")
 }
@@ -107,6 +108,7 @@ model User {
   auditLogs           AuditLog[]
   leadsCreated        Lead[]        @relation("LeadCreatedBy")
   leadsAssigned       Lead[]        @relation("LeadAssignedTo")
+  leadAssignments     LeadAssignee[]
   dealsOwned          Deal[]        @relation("DealOwner")
   activitiesCreated   Activity[]    @relation("ActivityCreatedBy")
   activitiesAssigned  Activity[]    @relation("ActivityAssignedTo")
@@ -200,8 +202,14 @@ model Lead {
   source         String?
   status         LeadStatus @default(NOVO)
   liroContactId  String?
+  // Nome do operador responsável, do lado do Liro CRM — capturado de forma
+  // best-effort na sincronização (campo pode não existir dependendo da
+  // resposta da API deles); é só informativo, não é usado pra lógica.
+  liroOperatorName String?
   assignedToId   String?
   assignedTo     User?    @relation("LeadAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  sectorId       String?
+  sector         OrganizationSector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
   createdById    String
   createdBy      User     @relation("LeadCreatedBy", fields: [createdById], references: [id])
   createdAt      DateTime @default(now())
@@ -209,9 +217,41 @@ model Lead {
 
   deals      Deal[]
   activities Activity[]
+  // Pessoas adicionais atribuídas ao lead, além do "assignedTo" principal —
+  // um contato pode ter mais de uma pessoa responsável ao mesmo tempo.
+  additionalAssignees LeadAssignee[]
 
   @@index([organizationId, status])
   @@map("leads")
+}
+
+// Setor/equipe da organização (ex.: "Comercial Maringá", "Suporte N2") —
+// usado pra categorizar/atribuir leads por área, além da pessoa responsável.
+model OrganizationSector {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  createdAt      DateTime @default(now())
+
+  leads Lead[]
+
+  @@unique([organizationId, name])
+  @@map("organization_sectors")
+}
+
+// Atribuição extra de pessoa a um lead — junto com `Lead.assignedTo`
+// (responsável principal), permite múltiplas pessoas no mesmo contato.
+model LeadAssignee {
+  id         String   @id @default(uuid())
+  leadId     String
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@unique([leadId, userId])
+  @@map("lead_assignees")
 }
 
 enum DealStatus {
