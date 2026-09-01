@@ -66,6 +66,21 @@ export function CustomerQuickViewModal({ customerId, onClose }: { customerId: st
     }
   }, [customer]);
 
+  // Reconsulta o CNPJ automaticamente ao abrir o popup — antes só
+  // acontecia com o clique manual em "Reconsultar CNPJ", então o card de
+  // situação cadastral parecia "vazio" até o usuário clicar. Dispara uma
+  // vez por cliente (chave = id), não a cada refetch do customer.
+  useEffect(() => {
+    cnpjQuery.reset();
+    if (customer?.documentType === 'CNPJ' && customer.document) {
+      cnpjQuery.mutate({
+        document: customer.document,
+        purpose: 'Verificação periódica de situação cadastral do cliente',
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer?.id, customer?.documentType, customer?.document]);
+
   if (!customerId) return null;
 
   const onSaveEdit = async (e: React.FormEvent) => {

@@ -139,8 +139,6 @@ export function CustomersPage() {
 
       {isLoading ? (
         <Spinner />
-      ) : !customers?.length ? (
-        <EmptyState title="Nenhum cliente encontrado" description="Ajuste os filtros nas colunas, ou cadastre/importe clientes." />
       ) : (
         <Table>
           <Thead>
@@ -206,7 +204,14 @@ export function CustomersPage() {
             </Tr>
           </Thead>
           <Tbody>
-            {customers.map((c) => (
+            {!customers?.length && (
+              <Tr className="hover:bg-transparent">
+                <Td colSpan={7 + (fieldDefinitions?.length ?? 0)} className="py-10 text-center">
+                  <EmptyState title="Nenhum cliente encontrado" description="Ajuste os filtros nas colunas acima, ou cadastre/importe clientes." />
+                </Td>
+              </Tr>
+            )}
+            {customers?.map((c) => (
               <Tr key={c.id} className="cursor-pointer" onClick={() => setQuickViewId(c.id)}>
                 <Td className="font-medium text-slate-900">{c.name}</Td>
                 <Td>{formatDocument(c.document)}</Td>

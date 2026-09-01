@@ -18,10 +18,31 @@ export function useCreateCategory() {
   });
 }
 
-export function useTransactions(params: { type?: string; status?: string; from?: string; to?: string } = {}) {
+export interface TransactionListParams {
+  type?: string[];
+  status?: string[];
+  categoryId?: string[];
+  description?: string;
+  from?: string;
+  to?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+}
+
+export function useTransactions(params: TransactionListParams = {}) {
+  const query = {
+    type: params.type?.length ? params.type.join(',') : undefined,
+    status: params.status?.length ? params.status.join(',') : undefined,
+    categoryId: params.categoryId?.length ? params.categoryId.join(',') : undefined,
+    description: params.description || undefined,
+    from: params.from || undefined,
+    to: params.to || undefined,
+    sortBy: params.sortBy || undefined,
+    sortDir: params.sortDir || undefined,
+  };
   return useQuery({
-    queryKey: ['financial', 'transactions', params],
-    queryFn: async () => (await api.get<Transaction[]>('/financial/transactions', { params })).data,
+    queryKey: ['financial', 'transactions', query],
+    queryFn: async () => (await api.get<Transaction[]>('/financial/transactions', { params: query })).data,
   });
 }
 

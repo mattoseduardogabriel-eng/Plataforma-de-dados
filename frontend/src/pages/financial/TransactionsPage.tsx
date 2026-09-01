@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Pencil, Plus } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { Button, Card, Input, Label, Select, Spinner, Badge, EmptyState } from '@/components/ui/primitives';
+import { Button, Input, Label, Select, Spinner, Badge, EmptyState } from '@/components/ui/primitives';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@/components/ui/table';
+import { ColumnFilterHeader } from '@/components/ui/column-filter-header';
 import { Dialog } from '@/components/ui/dialog';
 import { useTransactions, useCreateTransaction, useUpdateTransaction, useCategories, useCreateCategory } from '@/hooks/useFinancial';
 import { useToast } from '@/components/ui/toast';
@@ -17,10 +18,44 @@ const STATUS_TONE: Record<TransactionStatus, 'neutral' | 'success' | 'warning' |
   CANCELADO: 'neutral',
 };
 
+const TYPE_OPTIONS = [
+  { label: 'Receita', value: 'RECEITA' },
+  { label: 'Despesa', value: 'DESPESA' },
+];
+
+const STATUS_OPTIONS = [
+  { label: 'Pendente', value: 'PENDENTE' },
+  { label: 'Pago', value: 'PAGO' },
+  { label: 'Atrasado', value: 'ATRASADO' },
+  { label: 'Cancelado', value: 'CANCELADO' },
+];
+
+interface SortState {
+  key: string;
+  dir: 'asc' | 'desc';
+}
+
 export function TransactionsPage() {
-  const [typeFilter, setTypeFilter] = useState('');
-  const { data: transactions, isLoading } = useTransactions({ type: typeFilter || undefined });
+  const [descriptionFilter, setDescriptionFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
+  const [sort, setSort] = useState<SortState | null>(null);
+
+  const { data: transactions, isLoading } = useTransactions({
+    description: descriptionFilter,
+    type: typeFilter,
+    status: statusFilter,
+    categoryId: categoryFilter,
+    sortBy: sort?.key,
+    sortDir: sort?.dir,
+  });
   const { data: categories } = useCategories();
+
+  const sortProps = (key: string) => ({
+    sortDir: sort?.key === key ? sort.dir : null,
+    onSort: (dir: 'asc' | 'desc' | null) => setSort(dir ? { key, dir } : null),
+  });
   const createTransaction = useCreateTransaction();
   const updateTransaction = useUpdateTransaction();
   const createCategory = useCreateCategory();
@@ -123,33 +158,50 @@ export function TransactionsPage() {
         }
       />
 
-      <Card className="mb-4 flex items-center gap-3 p-4">
-        <Select className="w-52" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-          <option value="">Todos os tipos</option>
-          <option value="RECEITA">Receitas</option>
-          <option value="DESPESA">Despesas</option>
-        </Select>
-      </Card>
-
       {isLoading ? (
         <Spinner />
-      ) : !transactions?.length ? (
-        <EmptyState title="Nenhum lançamento" description="Registre receitas e despesas para acompanhar o caixa." />
       ) : (
         <Table>
           <Thead>
             <Tr>
-              <Th>Descrição</Th>
-              <Th>Categoria</Th>
-              <Th>Tipo</Th>
-              <Th>Valor</Th>
-              <Th>Vencimento</Th>
-              <Th>Status</Th>
-              <Th></Th>
+              <ColumnFilterHeader
+                label="Descrição"
+                {...sortProps('description')}
+                filter={{ kind: 'text', value: descriptionFilter, onChange: setDescriptionFilter }}
+              />
+              <ColumnFilterHeader
+                label="Categoria"
+                filter={{
+                  kind: 'options',
+                  value: categoryFilter,
+                  onChange: setCategoryFilter,
+                  options: (categories ?? []).map((c) => ({ label: c.name, value: c.id })),
+                }}
+              />
+              <ColumnFilterHeader
+                label="Tipo"
+                {...sortProps('type')}
+                filter={{ kind: 'options', value: typeFilter, onChange: setTypeFilter, options: TYPE_OPTIONS }}
+              />
+              <ColumnFilterHeader label="Valor" {...sortProps('amount')} />
+              <ColumnFilterHeader label="Vencimento" {...sortProps('dueDate')} />
+              <ColumnFilterHeader
+                label="Status"
+                {...sortProps('status')}
+                filter={{ kind: 'options', value: statusFilter, onChange: setStatusFilter, options: STATUS_OPTIONS }}
+              />
+              <Th />
             </Tr>
           </Thead>
           <Tbody>
-            {transactions.map((tx) => (
+            {!transactions?.length && (
+              <Tr className="hover:bg-transparent">
+                <Td colSpan={7} className="py-10 text-center">
+                  <EmptyState title="Nenhum lançamento encontrado" description="Ajuste os filtros nas colunas acima, ou registre um novo lançamento." />
+                </Td>
+              </Tr>
+            )}
+            {transactions?.map((tx) => (
               <Tr key={tx.id}>
                 <Td className="font-medium text-slate-900">{tx.description}</Td>
                 <Td>{tx.category?.name ?? '—'}</Td>

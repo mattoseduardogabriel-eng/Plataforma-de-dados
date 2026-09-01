@@ -53,12 +53,19 @@ function normalizeHeader(h: string): string {
 }
 
 function parseSheet(file: File): Promise<ParsedRow[]> {
+  const isCsv = file.name.toLowerCase().endsWith('.csv');
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
     reader.onload = () => {
       try {
-        const workbook = XLSX.read(reader.result, { type: 'binary' });
+        // CSV precisa ser lido como texto (readAsText decodifica UTF-8
+        // corretamente) — como ArrayBuffer, o SheetJS não tem como saber
+        // a codificação e cada acento vira 2 chars errados (ex.: "ç" ->
+        // "Ã§"). .xlsx/.xls são binários de verdade, aí sim como buffer.
+        const workbook = isCsv
+          ? XLSX.read(reader.result as string, { type: 'string' })
+          : XLSX.read(reader.result as ArrayBuffer, { type: 'array' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
@@ -89,7 +96,11 @@ function parseSheet(file: File): Promise<ParsedRow[]> {
         reject(err instanceof Error ? err : new Error('Planilha inválida.'));
       }
     };
-    reader.readAsBinaryString(file);
+    if (isCsv) {
+      reader.readAsText(file, 'utf-8');
+    } else {
+      reader.readAsArrayBuffer(file);
+    }
   });
 }
 

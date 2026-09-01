@@ -27,22 +27,40 @@ export class TransactionsService {
 
   findAll(
     organizationId: string,
-    filters: { type?: string; status?: string; from?: string; to?: string; customerId?: string },
+    filters: {
+      type?: string[];
+      status?: string[];
+      from?: string;
+      to?: string;
+      customerId?: string;
+      description?: string;
+      categoryId?: string[];
+      sortBy?: 'description' | 'amount' | 'dueDate' | 'status' | 'type' | 'createdAt';
+      sortDir?: 'asc' | 'desc';
+    },
   ) {
     const where: Prisma.TransactionWhereInput = {
       organizationId,
-      type: filters.type as any,
-      status: filters.status as any,
+      type: filters.type?.length ? { in: filters.type as any } : undefined,
+      status: filters.status?.length ? { in: filters.status as any } : undefined,
       customerId: filters.customerId,
+      description: filters.description ? { contains: filters.description, mode: 'insensitive' } : undefined,
+      categoryId: filters.categoryId?.length ? { in: filters.categoryId } : undefined,
       dueDate: {
         gte: filters.from ? new Date(filters.from) : undefined,
         lte: filters.to ? new Date(filters.to) : undefined,
       },
     };
+
+    const SORTABLE = ['description', 'amount', 'dueDate', 'status', 'type', 'createdAt'];
+    const orderBy: Prisma.TransactionOrderByWithRelationInput = filters.sortBy && SORTABLE.includes(filters.sortBy)
+      ? { [filters.sortBy]: filters.sortDir ?? 'asc' }
+      : { dueDate: 'desc' };
+
     return this.prisma.transaction.findMany({
       where,
       include: { category: true, customer: { select: { id: true, name: true } } },
-      orderBy: { dueDate: 'desc' },
+      orderBy,
     });
   }
 

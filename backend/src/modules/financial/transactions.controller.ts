@@ -23,8 +23,22 @@ export class TransactionsController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('customerId') customerId?: string,
+    @Query('description') description?: string,
+    @Query('categoryId') categoryId?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
-    return this.transactionsService.findAll(user.organizationId, { type, status, from, to, customerId });
+    return this.transactionsService.findAll(user.organizationId, {
+      type: type ? type.split(',') : undefined,
+      status: status ? status.split(',') : undefined,
+      from,
+      to,
+      customerId,
+      description,
+      categoryId: categoryId ? categoryId.split(',') : undefined,
+      sortBy: sortBy as any,
+      sortDir: sortDir as any,
+    });
   }
 
   @Patch(':id')
