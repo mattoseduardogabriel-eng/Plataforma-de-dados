@@ -1,8 +1,8 @@
-# Nova (nome provisório) — plataforma de dados da Órbita
+# Aster — plataforma de dados da Órbita
 
-> Nome de produto ainda provisório — parte do hub da **Órbita**, que vai unificar o
-> **Liro CRM**, esta plataforma e outros produtos futuros. Troque em
-> [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts) assim que definido.
+> Produto do hub da **Órbita**, que unifica o **Liro CRM**, esta plataforma e outros
+> produtos futuros. Nome do produto centralizado em
+> [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts).
 
 Plataforma completa de **CRM de vendas**, **financeiro**, **pós-venda/relacionamento** e
 **inteligência de dados** (consulta de CNPJ, CPF, telefone, score de crédito, vínculos
