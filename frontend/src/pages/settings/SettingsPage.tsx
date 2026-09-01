@@ -124,7 +124,7 @@ export function SettingsPage() {
                       <Badge tone={u.active ? 'success' : 'danger'}>{u.active ? 'Ativo' : 'Inativo'}</Badge>
                       {isAdmin && u.id !== currentUser?.id && (
                         <button
-                          className="text-xs font-medium text-brand-600 hover:underline"
+                          className="text-xs font-medium text-brand-300 hover:underline"
                           onClick={() => toggleActive(u.id, !!u.active)}
                         >
                           {u.active ? 'Desativar' : 'Ativar'}

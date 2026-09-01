@@ -43,8 +43,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={item.id}
             className={cn(
-              'flex items-start gap-3 rounded-lg border bg-white p-3 shadow-lg',
-              item.tone === 'error' ? 'border-red-200' : 'border-slate-200',
+              'flex items-start gap-3 rounded-lg border bg-slate-100 p-3 shadow-lg',
+              item.tone === 'error' ? 'border-red-400/30' : 'border-slate-300/60',
             )}
           >
             {icons[item.tone]}

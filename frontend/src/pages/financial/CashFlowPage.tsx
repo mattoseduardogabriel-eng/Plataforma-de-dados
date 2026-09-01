@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, Spinner, StatCard } from '@/components/ui/primitives';
 import { useCashFlow } from '@/hooks/useFinancial';
 import { formatCurrency } from '@/lib/utils';
+import { chartAxisStroke, chartGridStroke, chartTooltipItemStyle, chartTooltipLabelStyle, chartTooltipStyle } from '@/lib/chart-theme';
 import { Wallet, AlertTriangle, TrendingUp, Clock } from 'lucide-react';
 
 export function CashFlowPage() {
@@ -50,13 +51,22 @@ export function CashFlowPage() {
         <CardContent>
           <ResponsiveContainer width="100%" height={340}>
             <BarChart data={data.series}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#94a3b8" />
-              <YAxis tick={{ fontSize: 12 }} stroke="#94a3b8" tickFormatter={(v) => `${v / 1000}k`} />
-              <Tooltip formatter={(value: number) => formatCurrency(value)} />
-              <Legend />
-              <Bar dataKey="receitas" fill="#22c55e" name="Receitas" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="despesas" fill="#ef4444" name="Despesas" radius={[4, 4, 0, 0]} />
+              <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
+              <XAxis dataKey="month" tick={{ fontSize: 12, fill: chartAxisStroke }} stroke={chartAxisStroke} />
+              <YAxis
+                tick={{ fontSize: 12, fill: chartAxisStroke }}
+                stroke={chartAxisStroke}
+                tickFormatter={(v) => `${v / 1000}k`}
+              />
+              <Tooltip
+                formatter={(value: number) => formatCurrency(value)}
+                contentStyle={chartTooltipStyle}
+                labelStyle={chartTooltipLabelStyle}
+                itemStyle={chartTooltipItemStyle}
+              />
+              <Legend wrapperStyle={{ color: '#aebcbc', fontSize: 13 }} />
+              <Bar dataKey="receitas" fill="#3ddbaa" name="Receitas" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="despesas" fill="#f87171" name="Despesas" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>

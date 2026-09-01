@@ -41,7 +41,7 @@ export function TabsTrigger({ value, children }: { value: string; children: Reac
       onClick={() => ctx.onChange(value)}
       className={cn(
         'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-        active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+        active ? 'bg-slate-300 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
       )}
     >
       {children}

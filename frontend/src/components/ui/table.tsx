@@ -3,22 +3,22 @@ import { cn } from '@/lib/utils';
 
 export function Table({ className, ...props }: HTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="w-full overflow-x-auto rounded-xl border border-slate-200 bg-white">
+    <div className="w-full overflow-x-auto rounded-xl border border-slate-200 bg-slate-100">
       <table className={cn('w-full min-w-[640px] border-collapse text-sm', className)} {...props} />
     </div>
   );
 }
 
 export function Thead({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn('bg-slate-50', className)} {...props} />;
+  return <thead className={cn('bg-slate-200/40', className)} {...props} />;
 }
 
 export function Tbody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <tbody className={cn('divide-y divide-slate-100', className)} {...props} />;
+  return <tbody className={cn('divide-y divide-slate-300/40', className)} {...props} />;
 }
 
 export function Tr({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
-  return <tr className={cn('hover:bg-slate-50/60', className)} {...props} />;
+  return <tr className={cn('hover:bg-slate-200/40', className)} {...props} />;
 }
 
 export function Th({ className, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {

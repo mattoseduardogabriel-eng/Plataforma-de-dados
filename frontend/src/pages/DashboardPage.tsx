@@ -8,6 +8,7 @@ import { usePortfolioOverview } from '@/hooks/usePostSale';
 import { useAuditLogs } from '@/hooks/useReports';
 import { useAuth } from '@/lib/auth-context';
 import { cn, formatCurrency, formatDateTime } from '@/lib/utils';
+import { chartAxisStroke, chartGridStroke, chartTooltipItemStyle, chartTooltipLabelStyle, chartTooltipStyle } from '@/lib/chart-theme';
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -63,13 +64,22 @@ export function DashboardPage() {
             ) : (
               <ResponsiveContainer width="100%" height={260}>
                 <LineChart data={cashFlow?.series}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#94a3b8" />
-                  <YAxis tick={{ fontSize: 12 }} stroke="#94a3b8" tickFormatter={(v) => `${v / 1000}k`} />
-                  <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                  <Line type="monotone" dataKey="receitas" stroke="#22c55e" strokeWidth={2} name="Receitas" />
-                  <Line type="monotone" dataKey="despesas" stroke="#ef4444" strokeWidth={2} name="Despesas" />
-                  <Line type="monotone" dataKey="saldo" stroke="#6366f1" strokeWidth={2} name="Saldo" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
+                  <XAxis dataKey="month" tick={{ fontSize: 12, fill: chartAxisStroke }} stroke={chartAxisStroke} />
+                  <YAxis
+                    tick={{ fontSize: 12, fill: chartAxisStroke }}
+                    stroke={chartAxisStroke}
+                    tickFormatter={(v) => `${v / 1000}k`}
+                  />
+                  <Tooltip
+                    formatter={(value: number) => formatCurrency(value)}
+                    contentStyle={chartTooltipStyle}
+                    labelStyle={chartTooltipLabelStyle}
+                    itemStyle={chartTooltipItemStyle}
+                  />
+                  <Line type="monotone" dataKey="receitas" stroke="#3ddbaa" strokeWidth={2} name="Receitas" />
+                  <Line type="monotone" dataKey="despesas" stroke="#f87171" strokeWidth={2} name="Despesas" />
+                  <Line type="monotone" dataKey="saldo" stroke="#38bdf8" strokeWidth={2} name="Saldo" />
                 </LineChart>
               </ResponsiveContainer>
             )}

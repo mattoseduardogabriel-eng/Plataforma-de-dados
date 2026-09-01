@@ -6,8 +6,11 @@
   html {
     @apply antialiased;
   }
+  body {
+    @apply bg-slate-50;
+  }
   ::selection {
-    @apply bg-brand-200 text-brand-900;
+    @apply bg-brand-500/30 text-brand-200;
   }
 }
 
@@ -18,5 +21,13 @@
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
     @apply bg-slate-300 rounded-full;
+  }
+
+  /* Campo estelar decorativo usado nas telas de autenticação, ecoando a
+     identidade visual "órbita" (fundo escuro + pontos de luz). */
+  .star-field {
+    background-image: theme('backgroundImage.star-field');
+    background-size: theme('backgroundSize.stars');
+    background-repeat: repeat;
   }
 }

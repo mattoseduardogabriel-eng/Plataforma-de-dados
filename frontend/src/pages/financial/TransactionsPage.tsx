@@ -117,7 +117,7 @@ export function TransactionsPage() {
                 <Td>
                   <Badge tone={tx.type === 'RECEITA' ? 'success' : 'danger'}>{tx.type}</Badge>
                 </Td>
-                <Td className={tx.type === 'RECEITA' ? 'text-emerald-600' : 'text-red-600'}>
+                <Td className={tx.type === 'RECEITA' ? 'text-emerald-400' : 'text-red-400'}>
                   {formatCurrency(tx.amount)}
                 </Td>
                 <Td>{formatDate(tx.dueDate)}</Td>
@@ -126,7 +126,7 @@ export function TransactionsPage() {
                 </Td>
                 <Td>
                   {tx.status === 'PENDENTE' && (
-                    <button className="text-xs font-medium text-brand-600 hover:underline" onClick={() => markPaid(tx.id)}>
+                    <button className="text-xs font-medium text-brand-300 hover:underline" onClick={() => markPaid(tx.id)}>
                       Marcar como pago
                     </button>
                   )}

@@ -81,7 +81,7 @@ export function PipelinePage() {
         {pipeline?.stages.map((stage) => (
           <div
             key={stage.id}
-            className="flex w-72 shrink-0 flex-col rounded-xl bg-slate-100/70 p-3"
+            className="flex w-72 shrink-0 flex-col rounded-xl bg-slate-200/40 p-3"
             onDragOver={(e) => e.preventDefault()}
             onDrop={() => onDrop(stage.id)}
           >
@@ -91,7 +91,7 @@ export function PipelinePage() {
                 <span className="text-sm font-semibold text-slate-700">{stage.name}</span>
                 <Badge tone="neutral">{dealsByStage[stage.id]?.length ?? 0}</Badge>
               </div>
-              <button onClick={() => openDialog(stage.id)} className="text-slate-400 hover:text-brand-600">
+              <button onClick={() => openDialog(stage.id)} className="text-slate-400 hover:text-brand-300">
                 <Plus className="h-4 w-4" />
               </button>
             </div>
@@ -110,7 +110,7 @@ export function PipelinePage() {
                   <p className="text-sm font-medium text-slate-900">{deal.title}</p>
                   {deal.productPlan && <p className="mt-0.5 text-xs text-slate-500">{deal.productPlan}</p>}
                   <div className="mt-2 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-brand-700">{formatCurrency(deal.value)}</span>
+                    <span className="text-sm font-semibold text-brand-300">{formatCurrency(deal.value)}</span>
                     <span className="text-xs text-slate-400">{deal.owner.name.split(' ')[0]}</span>
                   </div>
                 </Card>

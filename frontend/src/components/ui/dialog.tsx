@@ -30,18 +30,18 @@ export function Dialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div
         className={cn(
-          'relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white shadow-xl',
+          'relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-slate-300/60 bg-slate-100 shadow-xl',
           className,
         )}
       >
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-slate-300/60 px-5 py-4">
           <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
           <button
             onClick={onClose}
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="rounded-md p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
             aria-label="Fechar"
           >
             <X className="h-4 w-4" />

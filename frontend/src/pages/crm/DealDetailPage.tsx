@@ -86,7 +86,7 @@ export function DealDetailPage() {
             {deal.lead && (
               <p>
                 <span className="text-slate-400">Lead:</span>{' '}
-                <Link to={`/crm/leads/${deal.lead.id}`} className="text-brand-600 hover:underline">
+                <Link to={`/crm/leads/${deal.lead.id}`} className="text-brand-300 hover:underline">
                   {deal.lead.name}
                 </Link>
               </p>

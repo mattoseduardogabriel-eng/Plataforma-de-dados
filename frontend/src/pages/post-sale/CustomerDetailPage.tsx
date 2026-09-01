@@ -85,7 +85,7 @@ export function CustomerDetailPage() {
           queryHref && (
             <Link
               to={queryHref}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-full border border-slate-300 bg-slate-100 px-4 text-sm font-medium text-slate-700 hover:bg-slate-200"
             >
               <Search className="h-4 w-4" /> Consultar {customer.documentType}
             </Link>
@@ -218,7 +218,7 @@ export function CustomerDetailPage() {
                 customer.transactions.map((t: any) => (
                   <div key={t.id} className="flex items-center justify-between border-b border-slate-50 pb-2 text-sm last:border-0">
                     <span>{t.description}</span>
-                    <span className={cn('font-medium', t.type === 'RECEITA' ? 'text-emerald-600' : 'text-red-600')}>
+                    <span className={cn('font-medium', t.type === 'RECEITA' ? 'text-emerald-400' : 'text-red-400')}>
                       {formatCurrency(t.amount)}
                     </span>
                   </div>

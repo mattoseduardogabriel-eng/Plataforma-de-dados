@@ -38,7 +38,7 @@ export function TeamPage() {
                 <Td className="font-medium text-slate-900">{row.name}</Td>
                 <Td>{row.role}</Td>
                 <Td>{row.dealsWon}</Td>
-                <Td className="font-medium text-emerald-600">{formatCurrency(row.revenueWon)}</Td>
+                <Td className="font-medium text-emerald-400">{formatCurrency(row.revenueWon)}</Td>
                 <Td>
                   {row.openDeals} · {formatCurrency(row.openPipelineValue)}
                 </Td>
