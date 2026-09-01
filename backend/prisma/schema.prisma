@@ -46,8 +46,39 @@ model Organization {
   reports           Report[]
   creditPolicies    CreditPolicy[]
   crivoDecisions    CrivoDecision[]
+  customerFieldDefinitions CustomerFieldDefinition[]
 
   @@map("organizations")
+}
+
+enum CustomFieldType {
+  TEXTO
+  BOOLEANO
+  LISTA
+}
+
+// Campo personalizado da Carteira de Clientes, definido por organização
+// (só Admin/Gestor cria — ver customer-fields.controller.ts). Cada campo
+// criado aqui aparece automaticamente como filtro na Carteira de Clientes
+// e como campo editável no popup do cliente — não precisa mexer em código
+// pra adicionar um campo novo.
+model CustomerFieldDefinition {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Chave estável usada em Customer.customFields — gerada a partir do
+  // rótulo no momento da criação, nunca muda depois (mesmo se o rótulo mudar).
+  key            String
+  label          String
+  type           CustomFieldType
+  // Opções da lista, só usado quando type = LISTA.
+  options        String[] @default([])
+  order          Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, key])
+  @@map("customer_field_definitions")
 }
 
 enum Role {
@@ -333,6 +364,7 @@ model Customer {
   email              String?
   phone              String?
   address            String?
+  city               String?
   planName           String?
   monthlyValue       Decimal? @db.Decimal(14, 2)
   contractStartDate  DateTime?
@@ -342,6 +374,9 @@ model Customer {
   liroContactId      String?
   dealId             String?  @unique
   deal               Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  // Valores dos campos personalizados da organização (ver
+  // CustomerFieldDefinition) — { [chave do campo]: string | boolean }.
+  customFields       Json     @default("{}")
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

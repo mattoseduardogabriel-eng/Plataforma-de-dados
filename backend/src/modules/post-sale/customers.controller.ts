@@ -3,7 +3,10 @@ import { ApiTags } from '@nestjs/swagger';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { ImportCustomersDto } from './dto/import-customers.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { Role } from '@prisma/client';
+import { Roles } from '../../common/decorators/roles.decorator';
 
 @ApiTags('pós-venda')
 @Controller('post-sale/customers')
@@ -15,14 +18,38 @@ export class CustomersController {
     return this.customersService.create(user.organizationId, dto);
   }
 
+  @Roles(Role.ADMIN, Role.GESTOR, Role.ATENDIMENTO)
+  @Post('import')
+  importMany(@CurrentUser() user: AuthenticatedUser, @Body() dto: ImportCustomersDto) {
+    return this.customersService.importMany(user.organizationId, user.id, dto.customers);
+  }
+
   @Get()
   findAll(
     @CurrentUser() user: AuthenticatedUser,
+    @Query('name') name?: string,
+    @Query('document') document?: string,
+    @Query('city') city?: string,
+    @Query('planName') planName?: string,
     @Query('status') status?: string,
     @Query('churnRiskLevel') churnRiskLevel?: string,
+    @Query('customFields') customFields?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
     @Query('search') search?: string,
   ) {
-    return this.customersService.findAll(user.organizationId, { status, churnRiskLevel, search });
+    return this.customersService.findAll(user.organizationId, {
+      name,
+      document,
+      city,
+      planName,
+      status: status ? status.split(',') : undefined,
+      churnRiskLevel: churnRiskLevel ? churnRiskLevel.split(',') : undefined,
+      customFields,
+      sortBy: sortBy as any,
+      sortDir: sortDir as any,
+      search,
+    });
   }
 
   @Get(':id')

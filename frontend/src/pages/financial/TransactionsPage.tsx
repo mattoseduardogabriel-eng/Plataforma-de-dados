@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Pencil, Plus } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, Card, Input, Label, Select, Spinner, Badge, EmptyState } from '@/components/ui/primitives';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@/components/ui/table';
@@ -8,7 +8,7 @@ import { useTransactions, useCreateTransaction, useUpdateTransaction, useCategor
 import { useToast } from '@/components/ui/toast';
 import { extractErrorMessage } from '@/lib/auth-context';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import type { FinanceType, TransactionStatus } from '@/types';
+import type { FinanceType, Transaction, TransactionStatus } from '@/types';
 
 const STATUS_TONE: Record<TransactionStatus, 'neutral' | 'success' | 'warning' | 'danger'> = {
   PENDENTE: 'warning',
@@ -35,6 +35,45 @@ export function TransactionsPage() {
     categoryId: '',
   });
   const [newCategory, setNewCategory] = useState('');
+
+  const [editing, setEditing] = useState<Transaction | null>(null);
+  const [editForm, setEditForm] = useState({
+    description: '',
+    amount: '',
+    dueDate: '',
+    categoryId: '',
+    status: 'PENDENTE' as TransactionStatus,
+  });
+
+  const openEdit = (tx: Transaction) => {
+    setEditing(tx);
+    setEditForm({
+      description: tx.description,
+      amount: String(tx.amount),
+      dueDate: tx.dueDate.slice(0, 10),
+      categoryId: tx.category?.id ?? '',
+      status: tx.status,
+    });
+  };
+
+  const onSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editing) return;
+    try {
+      await updateTransaction.mutateAsync({
+        id: editing.id,
+        description: editForm.description,
+        amount: Number(editForm.amount),
+        dueDate: editForm.dueDate,
+        categoryId: editForm.categoryId || null,
+        status: editForm.status,
+      });
+      toast({ tone: 'success', title: 'Lançamento atualizado' });
+      setEditing(null);
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao atualizar lançamento', description: extractErrorMessage(err) });
+    }
+  };
 
   const onCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,11 +164,20 @@ export function TransactionsPage() {
                   <Badge tone={STATUS_TONE[tx.status]}>{tx.status}</Badge>
                 </Td>
                 <Td>
-                  {tx.status === 'PENDENTE' && (
-                    <button className="text-xs font-medium text-brand-300 hover:underline" onClick={() => markPaid(tx.id)}>
-                      Marcar como pago
+                  <div className="flex items-center gap-3">
+                    {tx.status === 'PENDENTE' && (
+                      <button className="text-xs font-medium text-brand-300 hover:underline" onClick={() => markPaid(tx.id)}>
+                        Marcar como pago
+                      </button>
+                    )}
+                    <button
+                      className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-300"
+                      onClick={() => openEdit(tx)}
+                      title="Editar lançamento"
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Editar
                     </button>
-                  )}
+                  </div>
                 </Td>
               </Tr>
             ))}
@@ -179,6 +227,68 @@ export function TransactionsPage() {
           </div>
           <Button type="submit" className="w-full" loading={createTransaction.isPending}>
             Criar lançamento
+          </Button>
+        </form>
+      </Dialog>
+
+      <Dialog open={!!editing} onClose={() => setEditing(null)} title="Editar lançamento">
+        <form onSubmit={onSaveEdit} className="space-y-4">
+          <div>
+            <Label>Descrição</Label>
+            <Input
+              required
+              value={editForm.description}
+              onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Valor (R$)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                required
+                value={editForm.amount}
+                onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label>Vencimento</Label>
+              <Input
+                type="date"
+                required
+                value={editForm.dueDate}
+                onChange={(e) => setEditForm((f) => ({ ...f, dueDate: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Categoria</Label>
+            <Select
+              value={editForm.categoryId}
+              onChange={(e) => setEditForm((f) => ({ ...f, categoryId: e.target.value }))}
+            >
+              <option value="">Sem categoria</option>
+              {categories?.filter((c) => c.type === editing?.type).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Status</Label>
+            <Select
+              value={editForm.status}
+              onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value as TransactionStatus }))}
+            >
+              <option value="PENDENTE">Pendente</option>
+              <option value="PAGO">Pago</option>
+              <option value="ATRASADO">Atrasado</option>
+              <option value="CANCELADO">Cancelado</option>
+            </Select>
+          </div>
+          <Button type="submit" className="w-full" loading={updateTransaction.isPending}>
+            Salvar alterações
           </Button>
         </form>
       </Dialog>

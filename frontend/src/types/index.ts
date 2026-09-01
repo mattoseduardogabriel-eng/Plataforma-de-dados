@@ -158,13 +158,26 @@ export interface Customer {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  city?: string | null;
   planName?: string | null;
   monthlyValue?: string | number | null;
   contractStartDate?: string | null;
   status: CustomerStatus;
   churnRiskScore?: number | null;
   churnRiskLevel?: ChurnRiskLevel | null;
+  customFields?: Record<string, string | boolean>;
   createdAt: string;
+}
+
+export type CustomFieldType = 'TEXTO' | 'BOOLEANO' | 'LISTA';
+
+export interface CustomerFieldDefinition {
+  id: string;
+  key: string;
+  label: string;
+  type: CustomFieldType;
+  options: string[];
+  order: number;
 }
 
 export interface Contract {

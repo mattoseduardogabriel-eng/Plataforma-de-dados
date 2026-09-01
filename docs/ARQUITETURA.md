@@ -48,7 +48,7 @@ administrativos (gestão de usuários, políticas de crédito).
 | `audit` | `AuditService` — grava e lista `AuditLog` (ação, entidade, finalidade, ator) |
 | `crm` | Pipelines/estágios, leads, negociações (deals), atividades, dashboard de equipe. `DealsService.markWon` cria `Customer` + `Contract` automaticamente ao ganhar uma negociação |
 | `financial` | Categorias, transações, dashboard de fluxo de caixa |
-| `post-sale` | Clientes, contratos, histórico de interação, sinais de churn (`ChurnService.recalculateRisk` recalcula score/nível a cada sinal) |
+| `post-sale` | Clientes, contratos, histórico de interação, sinais de churn (`ChurnService.recalculateRisk` recalcula score/nível a cada sinal), importação em massa por planilha (upsert por documento), e `customer-fields` — campos personalizados por organização (texto/sim-não/lista) que viram coluna+filtro na Carteira de Clientes automaticamente (valores guardados em `Customer.customFields`, JSON) |
 | `data-intelligence` | Orquestra os **conectores** de dado (ver abaixo), grava `DataQuery` + `AuditLog` a cada consulta |
 | `crivo` | `PoliciesService` (CRUD de `CreditPolicy`) + `CrivoService.evaluate` (motor de decisão) |
 | `reports` | Cruzamento de dados internos + conectores em um `Report`, exportável em CSV |

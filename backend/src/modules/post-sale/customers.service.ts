@@ -3,10 +3,49 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { AuditService } from '../audit/audit.service';
+import { CustomerFieldsService } from './customer-fields.service';
+
+export interface ImportCustomersResult {
+  created: number;
+  updated: number;
+  errors: { row: number; name?: string; message: string }[];
+}
+
+export interface CustomerListFilters {
+  /** Filtro "contém", texto livre, por coluna — usados pelo popover de filtro do cabeçalho. */
+  name?: string;
+  document?: string;
+  city?: string;
+  planName?: string;
+  /** Múltiplos valores selecionados (checkbox no popover), combinados com OR. */
+  status?: string[];
+  churnRiskLevel?: string[];
+  /** JSON-encoded: { [chave do campo personalizado]: string | boolean } */
+  customFields?: string;
+  sortBy?: 'name' | 'document' | 'city' | 'planName' | 'monthlyValue' | 'status' | 'createdAt';
+  sortDir?: 'asc' | 'desc';
+  /** Mantido por compatibilidade com a busca antiga (nome ou documento). */
+  search?: string;
+}
+
+const SORTABLE_COLUMNS: NonNullable<CustomerListFilters['sortBy']>[] = [
+  'name',
+  'document',
+  'city',
+  'planName',
+  'monthlyValue',
+  'status',
+  'createdAt',
+];
 
 @Injectable()
 export class CustomersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+    private readonly customerFieldsService: CustomerFieldsService,
+  ) {}
 
   create(organizationId: string, dto: CreateCustomerDto) {
     return this.prisma.customer.create({
@@ -18,25 +57,70 @@ export class CustomersService {
     });
   }
 
-  findAll(
-    organizationId: string,
-    filters: { status?: string; churnRiskLevel?: string; search?: string },
-  ) {
+  async findAll(organizationId: string, filters: CustomerListFilters) {
     const where: Prisma.CustomerWhereInput = {
       organizationId,
-      status: filters.status as any,
-      churnRiskLevel: filters.churnRiskLevel as any,
+      name: filters.name ? { contains: filters.name, mode: 'insensitive' } : undefined,
+      document: filters.document ? { contains: filters.document.replace(/\D/g, '') || filters.document } : undefined,
+      city: filters.city ? { contains: filters.city, mode: 'insensitive' } : undefined,
+      planName: filters.planName ? { contains: filters.planName, mode: 'insensitive' } : undefined,
+      status: filters.status?.length ? { in: filters.status as any } : undefined,
+      churnRiskLevel: filters.churnRiskLevel?.length ? { in: filters.churnRiskLevel as any } : undefined,
       OR: filters.search
         ? [
             { name: { contains: filters.search, mode: 'insensitive' } },
-            { document: { contains: filters.search } },
+            { document: { contains: filters.search.replace(/\D/g, '') || filters.search } },
           ]
         : undefined,
+      AND: await this.buildCustomFieldsWhere(organizationId, filters.customFields),
     };
-    return this.prisma.customer.findMany({
-      where,
-      orderBy: [{ churnRiskScore: 'desc' }, { createdAt: 'desc' }],
-    });
+
+    const orderBy: Prisma.CustomerOrderByWithRelationInput[] =
+      filters.sortBy && SORTABLE_COLUMNS.includes(filters.sortBy)
+        ? [{ [filters.sortBy]: filters.sortDir ?? 'asc' } as Prisma.CustomerOrderByWithRelationInput]
+        : [{ churnRiskScore: 'desc' }, { createdAt: 'desc' }];
+
+    return this.prisma.customer.findMany({ where, orderBy });
+  }
+
+  /**
+   * Traduz o filtro de campos personalizados (JSON-encoded, vindo do
+   * popover de cada coluna) em condições Prisma sobre o JSON `customFields`
+   * — usa `equals` para BOOLEANO/LISTA (valor exato) e `string_contains`
+   * para TEXTO (busca parcial), de acordo com o tipo cadastrado do campo.
+   */
+  private async buildCustomFieldsWhere(
+    organizationId: string,
+    customFieldsJson?: string,
+  ): Promise<Prisma.CustomerWhereInput[] | undefined> {
+    if (!customFieldsJson) return undefined;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(customFieldsJson);
+    } catch {
+      return undefined;
+    }
+    const keys = Object.keys(parsed).filter((k) => parsed[k] !== '' && parsed[k] != null);
+    if (!keys.length) return undefined;
+
+    const definitions = await this.customerFieldsService.findAll(organizationId);
+    const byKey = new Map(definitions.map((d) => [d.key, d]));
+
+    return keys
+      .map((key): Prisma.CustomerWhereInput | null => {
+        const def = byKey.get(key);
+        if (!def) return null;
+        const value = parsed[key];
+        if (def.type === 'TEXTO') {
+          // Filtro de JSON no Postgres via Prisma não suporta `mode:
+          // insensitive` pra string_contains nesta versão — fica
+          // case-sensitive (diferente dos filtros "contém" nas colunas
+          // fixas, que usam `mode: insensitive` normalmente).
+          return { customFields: { path: [key], string_contains: String(value) } };
+        }
+        return { customFields: { path: [key], equals: value as Prisma.InputJsonValue } };
+      })
+      .filter((c): c is Prisma.CustomerWhereInput => c !== null);
   }
 
   async findOne(organizationId: string, id: string) {
@@ -53,6 +137,55 @@ export class CustomersService {
       throw new NotFoundException('Cliente não encontrado.');
     }
     return customer;
+  }
+
+  /**
+   * Importação em massa (planilha) — faz upsert por documento (CPF/CNPJ)
+   * dentro da organização: já existe → atualiza; não existe → cria. Uma
+   * linha inválida não derruba o lote inteiro, só é reportada em `errors`.
+   */
+  async importMany(organizationId: string, userId: string, rows: CreateCustomerDto[]): Promise<ImportCustomersResult> {
+    const result: ImportCustomersResult = { created: 0, updated: 0, errors: [] };
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        const cleanDocument = row.document?.replace(/\D/g, '') || undefined;
+        const existing = cleanDocument
+          ? await this.prisma.customer.findFirst({ where: { organizationId, document: cleanDocument } })
+          : null;
+
+        const data = {
+          ...row,
+          document: cleanDocument,
+          contractStartDate: row.contractStartDate ? new Date(row.contractStartDate) : undefined,
+        };
+
+        if (existing) {
+          await this.prisma.customer.update({ where: { id: existing.id }, data });
+          result.updated += 1;
+        } else {
+          await this.prisma.customer.create({ data: { ...data, organizationId } });
+          result.created += 1;
+        }
+      } catch (error) {
+        result.errors.push({
+          row: i + 1,
+          name: row.name,
+          message: error instanceof Error ? error.message : 'Erro desconhecido ao importar linha.',
+        });
+      }
+    }
+
+    await this.auditService.log({
+      organizationId,
+      userId,
+      action: 'CUSTOMERS_IMPORTED',
+      entityType: 'Customer',
+      metadata: { created: result.created, updated: result.updated, errorCount: result.errors.length },
+    });
+
+    return result;
   }
 
   async update(organizationId: string, id: string, dto: UpdateCustomerDto) {

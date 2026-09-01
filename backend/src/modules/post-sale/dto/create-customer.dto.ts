@@ -5,6 +5,7 @@ import {
   IsEmail,
   IsEnum,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Min,
@@ -42,6 +43,11 @@ export class CreateCustomerDto {
   @IsString()
   address?: string;
 
+  @ApiPropertyOptional({ example: 'Maringá' })
+  @IsOptional()
+  @IsString()
+  city?: string;
+
   @ApiPropertyOptional({ example: 'Internet Empresarial 500Mb' })
   @IsOptional()
   @IsString()
@@ -62,4 +68,12 @@ export class CreateCustomerDto {
   @IsOptional()
   @IsEnum(CustomerStatus)
   status?: CustomerStatus;
+
+  @ApiPropertyOptional({
+    description: 'Valores dos campos personalizados da organização (ver /post-sale/customer-fields), por chave.',
+    example: { cliente_novo: true, segmento: 'Empresarial' },
+  })
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, string | boolean>;
 }

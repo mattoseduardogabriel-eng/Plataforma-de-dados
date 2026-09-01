@@ -20,7 +20,7 @@ cadastrais antes de fechar negócio.
 |---|---|
 | **CRM de Vendas** | Funil kanban configurável, leads, negociações, atividades, ranking/desempenho da equipe comercial. Fechar uma negociação como "Ganho" cria automaticamente o cliente e o contrato no módulo de Pós-venda. |
 | **Financeiro** | Lançamentos de receita/despesa, categorias, dashboard de fluxo de caixa (mensal, 6 meses), inadimplência. |
-| **Pós-venda** | Carteira de clientes, contratos, histórico de atendimento, sinais e score de risco de cancelamento (churn). |
+| **Pós-venda** | Carteira de clientes (com importação em massa por planilha e campos personalizados configuráveis pela própria organização), contratos, histórico de atendimento, sinais e score de risco de cancelamento (churn). Clicar num cliente abre um popup com edição rápida, reconsulta de CNPJ e atalho pra abrir a conversa no Liro CRM. |
 | **Inteligência de Dados** | Consulta de **CNPJ** (dado público oficial, Receita Federal via BrasilAPI), **CPF**, **telefone**, **score de crédito** e **vínculos/parentesco** (conectores plugáveis — ver [`docs/LGPD-E-FONTES-DE-DADOS.md`](docs/LGPD-E-FONTES-DE-DADOS.md)). Toda consulta de dado pessoal exige finalidade declarada e é auditada. |
 | **Crivo** | Motor de decisão de crédito: combina situação cadastral, score e pendências contra políticas configuráveis para aprovar, reprovar ou enviar à análise manual, com limite de crédito sugerido. |
 | **Cruzamento de Dados** | Relatórios que combinam dados internos (CRM/financeiro/pós-venda) com os conectores externos em um dossiê único, exportável em CSV. |

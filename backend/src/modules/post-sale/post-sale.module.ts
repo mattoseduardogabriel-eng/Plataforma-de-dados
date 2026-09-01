@@ -7,15 +7,20 @@ import { InteractionsService } from './interactions.service';
 import { InteractionsController } from './interactions.controller';
 import { ChurnService } from './churn.service';
 import { ChurnController } from './churn.controller';
+import { CustomerFieldsService } from './customer-fields.service';
+import { CustomerFieldsController } from './customer-fields.controller';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
+  imports: [AuditModule],
   controllers: [
     CustomersController,
     ContractsController,
     InteractionsController,
     ChurnController,
+    CustomerFieldsController,
   ],
-  providers: [CustomersService, ContractsService, InteractionsService, ChurnService],
+  providers: [CustomersService, ContractsService, InteractionsService, ChurnService, CustomerFieldsService],
   exports: [CustomersService],
 })
 export class PostSaleModule {}
