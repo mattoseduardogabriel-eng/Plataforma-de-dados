@@ -117,7 +117,7 @@ export function TransactionsPage() {
                 <Td>
                   <Badge tone={tx.type === 'RECEITA' ? 'success' : 'danger'}>{tx.type}</Badge>
                 </Td>
-                <Td className={tx.type === 'RECEITA' ? 'text-emerald-400' : 'text-red-400'}>
+                <Td className={tx.type === 'RECEITA' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
                   {formatCurrency(tx.amount)}
                 </Td>
                 <Td>{formatDate(tx.dueDate)}</Td>

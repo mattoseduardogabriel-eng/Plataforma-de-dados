@@ -218,7 +218,7 @@ export function CustomerDetailPage() {
                 customer.transactions.map((t: any) => (
                   <div key={t.id} className="flex items-center justify-between border-b border-slate-50 pb-2 text-sm last:border-0">
                     <span>{t.description}</span>
-                    <span className={cn('font-medium', t.type === 'RECEITA' ? 'text-emerald-400' : 'text-red-400')}>
+                    <span className={cn('font-medium', t.type === 'RECEITA' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
                       {formatCurrency(t.amount)}
                     </span>
                   </div>

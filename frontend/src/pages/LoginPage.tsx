@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Orbit } from 'lucide-react';
 import { useAuth, extractErrorMessage } from '@/lib/auth-context';
 import { Button, Card, Input, Label, Alert } from '@/components/ui/primitives';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { PRODUCT_NAME } from '@/lib/brand';
 
 export function LoginPage() {
@@ -33,6 +34,7 @@ export function LoginPage() {
 
   return (
     <div className="star-field relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 px-4">
+      <ThemeToggle className="absolute right-4 top-4" />
       <div className="pointer-events-none absolute -top-32 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-brand-500/20 blur-[100px]" />
       <div className="relative w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-3 text-center">

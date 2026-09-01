@@ -69,10 +69,10 @@ type BadgeTone = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'neutra
 
 const badgeTones: Record<BadgeTone, string> = {
   default: 'bg-brand-400/10 text-brand-300 ring-brand-400/30',
-  success: 'bg-emerald-400/10 text-emerald-300 ring-emerald-400/30',
-  warning: 'bg-amber-400/10 text-amber-300 ring-amber-400/30',
-  danger: 'bg-red-400/10 text-red-300 ring-red-400/30',
-  info: 'bg-sky-400/10 text-sky-300 ring-sky-400/30',
+  success: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-400/10 dark:text-emerald-300 dark:ring-emerald-400/30',
+  warning: 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/30',
+  danger: 'bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-400/10 dark:text-red-300 dark:ring-red-400/30',
+  info: 'bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-400/10 dark:text-sky-300 dark:ring-sky-400/30',
   neutral: 'bg-slate-400/10 text-slate-600 ring-slate-400/25',
 };
 
@@ -213,10 +213,10 @@ export function Alert({
   children: React.ReactNode;
 }) {
   const toneMap = {
-    info: 'bg-sky-400/10 border-sky-400/30 text-sky-200',
-    warning: 'bg-amber-400/10 border-amber-400/30 text-amber-200',
-    danger: 'bg-red-400/10 border-red-400/30 text-red-200',
-    success: 'bg-emerald-400/10 border-emerald-400/30 text-emerald-200',
+    info: 'bg-sky-50 border-sky-200 text-sky-800 dark:bg-sky-400/10 dark:border-sky-400/30 dark:text-sky-200',
+    warning: 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-400/10 dark:border-amber-400/30 dark:text-amber-200',
+    danger: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-400/10 dark:border-red-400/30 dark:text-red-200',
+    success: 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-400/10 dark:border-emerald-400/30 dark:text-emerald-200',
   } as const;
   return (
     <div className={cn('rounded-lg border px-4 py-3 text-sm', toneMap[tone], className)}>

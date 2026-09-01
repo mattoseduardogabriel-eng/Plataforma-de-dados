@@ -1,4 +1,8 @@
 /** @type {import('tailwindcss').Config} */
+function withOpacity(variable) {
+  return `rgb(var(${variable}) / <alpha-value>)`;
+}
+
 export default {
   darkMode: 'class',
   content: ['./index.html', './src/**/*.{ts,tsx}'],
@@ -6,35 +10,36 @@ export default {
     extend: {
       colors: {
         // Acento "orbit" — teal/mint. Substitui o antigo indigo em botões,
-        // links, foco de formulário, ícones ativos e destaques.
+        // links, foco de formulário, ícones ativos e destaques. 400/500 são
+        // constantes entre temas; 300 (texto de acento sobre superfície)
+        // é definido por tema via variável CSS — ver src/index.css.
         brand: {
           50: '#ecfdf7',
           100: '#d1faec',
           200: '#a3f3d9',
-          300: '#6ee7c4',
-          400: '#3ddbaa',
-          500: '#22c08c',
+          300: withOpacity('--brand-300'),
+          400: withOpacity('--brand-400'),
+          500: withOpacity('--brand-500'),
           600: '#169a70',
           700: '#12795a',
           800: '#0f5f47',
           900: '#0c4b39',
         },
-        // Paleta "night" — reaproveita a escala `slate` do Tailwind, mas
-        // invertida (50 = quase preto, 900 = quase branco), para que todo
-        // texto/borda escrito como text-slate-*/border-slate-* nas telas
-        // já existentes passe a funcionar em tema escuro sem precisar
-        // reescrever cada classe individualmente.
+        // Escala neutra dirigida por variáveis CSS: claro em :root, escuro
+        // em .dark (ver src/index.css) — assim toda classe já escrita como
+        // text-slate-*/bg-slate-*/border-slate-* responde ao tema sem
+        // precisar reescrever cada página.
         slate: {
-          50: '#05080a',
-          100: '#0a0f13',
-          200: '#131a1f',
-          300: '#1f282e',
-          400: '#3a454b',
-          500: '#66757a',
-          600: '#8b9a9d',
-          700: '#aebcbc',
-          800: '#d3dcda',
-          900: '#f2f7f5',
+          50: withOpacity('--slate-50'),
+          100: withOpacity('--slate-100'),
+          200: withOpacity('--slate-200'),
+          300: withOpacity('--slate-300'),
+          400: withOpacity('--slate-400'),
+          500: withOpacity('--slate-500'),
+          600: withOpacity('--slate-600'),
+          700: withOpacity('--slate-700'),
+          800: withOpacity('--slate-800'),
+          900: withOpacity('--slate-900'),
         },
       },
       backgroundImage: {
@@ -45,7 +50,7 @@ export default {
         stars: '380px 160px',
       },
       boxShadow: {
-        card: '0 1px 2px 0 rgb(0 0 0 / 0.24), 0 1px 3px 0 rgb(0 0 0 / 0.3)',
+        card: '0 1px 2px 0 rgb(0 0 0 / 0.06), 0 1px 3px 0 rgb(0 0 0 / 0.08)',
         glow: '0 0 40px -10px rgba(34, 192, 140, 0.35)',
       },
     },

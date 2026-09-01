@@ -5,6 +5,7 @@ import { navGroups } from './nav-config';
 import { useAuth } from '@/lib/auth-context';
 import { cn, initials } from '@/lib/utils';
 import { PRODUCT_NAME, PRODUCT_TAGLINE } from '@/lib/brand';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 function Sidebar({ mobileOpen, onCloseMobile }: { mobileOpen: boolean; onCloseMobile: () => void }) {
   return (
@@ -88,6 +89,7 @@ function Topbar({ onOpenMobile }: { onOpenMobile: () => void }) {
         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-400/15 text-sm font-semibold text-brand-300">
           {user ? initials(user.name) : ''}
         </div>
+        <ThemeToggle />
         <button
           onClick={() => logout()}
           className="rounded-lg p-2 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
