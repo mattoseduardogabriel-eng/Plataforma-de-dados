@@ -6,6 +6,7 @@ import { CnpjConnector } from '../data-intelligence/connectors/cnpj.connector';
 import { CreditScoreConnector } from '../data-intelligence/connectors/credit-score.connector';
 import { PoliciesService } from './policies.service';
 import { EvaluateCrivoDto } from './dto/evaluate-crivo.dto';
+import { LiroCrmService } from '../integrations/liro-crm/liro-crm.service';
 
 interface CrivoReason {
   criterio: string;
@@ -21,6 +22,7 @@ export class CrivoService {
     private readonly cnpjConnector: CnpjConnector,
     private readonly creditScoreConnector: CreditScoreConnector,
     private readonly policiesService: PoliciesService,
+    private readonly liroCrmService: LiroCrmService,
   ) {}
 
   async evaluate(organizationId: string, userId: string, dto: EvaluateCrivoDto) {
@@ -149,6 +151,14 @@ export class CrivoService {
       purpose: dto.purpose,
       metadata: { targetDocument: document, outcome } as Prisma.InputJsonValue,
     });
+
+    // Espelha o resultado no Liro CRM (melhor esforço — nunca quebra a
+    // avaliação se a integração não estiver configurada ou falhar).
+    void this.liroCrmService.tryTagByDocument(
+      organizationId,
+      document,
+      `Crivo: ${outcome.replace('_', ' ')}`,
+    );
 
     return decision;
   }

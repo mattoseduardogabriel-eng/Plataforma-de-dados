@@ -8,6 +8,7 @@ import { useOrganization, useUpdateOrganization, useOrgUsers, useCreateUser, use
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/toast';
 import { extractErrorMessage } from '@/lib/auth-context';
+import { LiroCrmIntegrationCard } from './LiroCrmIntegrationCard';
 import type { Role } from '@/types';
 
 const ROLES: Role[] = ['ADMIN', 'GESTOR', 'VENDEDOR', 'FINANCEIRO', 'ATENDIMENTO', 'ANALISTA'];
@@ -70,6 +71,7 @@ export function SettingsPage() {
         <TabsList>
           <TabsTrigger value="organizacao">Organização</TabsTrigger>
           <TabsTrigger value="usuarios">Usuários</TabsTrigger>
+          <TabsTrigger value="integracoes">Integrações</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -138,6 +140,8 @@ export function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      {tab === 'integracoes' && <LiroCrmIntegrationCard isAdmin={isAdmin} />}
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title="Novo usuário">
         <form onSubmit={onCreateUser} className="space-y-4">

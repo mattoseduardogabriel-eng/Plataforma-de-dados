@@ -21,6 +21,13 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Integração com o Liro CRM (API externa, chave por organização — ver
+  // docs/INTEGRACAO-LIRO-CRM.md). A chave é guardada cifrada (AES-256-GCM,
+  // ver src/common/crypto/secret-cipher.ts), nunca em texto puro.
+  liroCrmApiKeyEncrypted String?
+  liroCrmBaseUrl         String?
+  liroCrmLastSyncedAt    DateTime?
+
   users             User[]
   auditLogs         AuditLog[]
   pipelines         Pipeline[]
@@ -159,6 +166,7 @@ model Lead {
   companyName    String?
   source         String?
   status         LeadStatus @default(NOVO)
+  liroContactId  String?
   assignedToId   String?
   assignedTo     User?    @relation("LeadAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
   createdById    String
@@ -329,6 +337,7 @@ model Customer {
   status             CustomerStatus @default(ATIVO)
   churnRiskScore     Int?
   churnRiskLevel     ChurnRiskLevel?
+  liroContactId      String?
   dealId             String?  @unique
   deal               Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
   createdAt          DateTime @default(now())

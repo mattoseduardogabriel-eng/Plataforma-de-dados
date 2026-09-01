@@ -1,9 +1,13 @@
-# Plataforma de Dados
+# Nova (nome provisório) — plataforma de dados da Órbita
+
+> Nome de produto ainda provisório — parte do hub da **Órbita**, que vai unificar o
+> **Liro CRM**, esta plataforma e outros produtos futuros. Troque em
+> [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts) assim que definido.
 
 Plataforma completa de **CRM de vendas**, **financeiro**, **pós-venda/relacionamento** e
 **inteligência de dados** (consulta de CNPJ, CPF, telefone, score de crédito, vínculos
-familiares e cruzamento de dados), com um motor de decisão de crédito (**Crivo**) e
-auditoria completa orientada à LGPD.
+familiares e cruzamento de dados), com um motor de decisão de crédito (**Crivo**),
+integração com o **Liro CRM** e auditoria completa orientada à LGPD.
 
 Construída para uma operação de **franquia de telecomunicações**, mas o núcleo (CRM +
 financeiro + pós-venda + inteligência de dados + crivo) serve qualquer negócio B2B que
@@ -20,6 +24,7 @@ cadastrais antes de fechar negócio.
 | **Inteligência de Dados** | Consulta de **CNPJ** (dado público oficial, Receita Federal via BrasilAPI), **CPF**, **telefone**, **score de crédito** e **vínculos/parentesco** (conectores plugáveis — ver [`docs/LGPD-E-FONTES-DE-DADOS.md`](docs/LGPD-E-FONTES-DE-DADOS.md)). Toda consulta de dado pessoal exige finalidade declarada e é auditada. |
 | **Crivo** | Motor de decisão de crédito: combina situação cadastral, score e pendências contra políticas configuráveis para aprovar, reprovar ou enviar à análise manual, com limite de crédito sugerido. |
 | **Cruzamento de Dados** | Relatórios que combinam dados internos (CRM/financeiro/pós-venda) com os conectores externos em um dossiê único, exportável em CSV. |
+| **Integração com o Liro CRM** | Sincroniza contatos do Liro CRM como leads e devolve decisões do Crivo/consultas de dados como tags no contato — ver [`docs/INTEGRACAO-LIRO-CRM.md`](docs/INTEGRACAO-LIRO-CRM.md). |
 | **Auditoria (LGPD)** | Log de toda ação sensível — quem, o quê, quando e com qual finalidade — essencial para operar legalmente com dados pessoais. |
 
 ## Arquitetura
@@ -31,6 +36,7 @@ docker-compose.yml
 docs/
   ARQUITETURA.md
   LGPD-E-FONTES-DE-DADOS.md
+  INTEGRACAO-LIRO-CRM.md
 ```
 
 Veja o detalhamento em [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md).

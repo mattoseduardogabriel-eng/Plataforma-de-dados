@@ -9,14 +9,29 @@ import { useCreateActivity } from '@/hooks/useCrm';
 import { useToast } from '@/components/ui/toast';
 import { extractErrorMessage } from '@/lib/auth-context';
 import { formatCurrency, formatDateTime, formatDocument } from '@/lib/utils';
+import { usePushLiroCrmTag } from '@/hooks/useIntegrations';
 import type { ActivityType } from '@/types';
 
 export function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: lead, isLoading } = useLead(id);
   const createActivity = useCreateActivity();
+  const pushTag = usePushLiroCrmTag();
   const { toast } = useToast();
   const [activity, setActivity] = useState({ type: 'LIGACAO' as ActivityType, title: '', notes: '' });
+  const [tagName, setTagName] = useState('');
+
+  const onPushTag = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !tagName.trim()) return;
+    try {
+      await pushTag.mutateAsync({ leadId: id, tagName });
+      toast({ tone: 'success', title: 'Tag enviada ao Liro CRM' });
+      setTagName('');
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao enviar tag', description: extractErrorMessage(err) });
+    }
+  };
 
   const onAddActivity = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +91,32 @@ export function LeadDetailPage() {
             <p><span className="text-slate-400">Empresa:</span> {lead.companyName || '—'}</p>
             <p><span className="text-slate-400">Origem:</span> {lead.source || '—'}</p>
             <p><span className="text-slate-400">Responsável:</span> {lead.assignedTo?.name || '—'}</p>
+            <p>
+              <span className="text-slate-400">Liro CRM:</span>{' '}
+              {lead.liroContactId ? (
+                <Badge tone="success">Contato vinculado</Badge>
+              ) : (
+                <Badge tone="neutral">Não vinculado</Badge>
+              )}
+            </p>
+          </CardContent>
+          <CardContent className="border-t border-slate-300/60 pt-4">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Enviar tag ao Liro CRM</p>
+            <form onSubmit={onPushTag} className="flex gap-2">
+              <Input
+                placeholder="Ex.: Lead quente"
+                value={tagName}
+                onChange={(e) => setTagName(e.target.value)}
+              />
+              <Button type="submit" size="sm" loading={pushTag.isPending}>
+                Enviar
+              </Button>
+            </form>
+            <p className="mt-1 text-xs text-slate-500">
+              {lead.liroContactId
+                ? 'Aplica a tag no contato já vinculado.'
+                : 'Sem telefone, o vínculo não pode ser criado.'}
+            </p>
           </CardContent>
         </Card>
 

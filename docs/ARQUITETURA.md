@@ -52,6 +52,7 @@ administrativos (gestão de usuários, políticas de crédito).
 | `data-intelligence` | Orquestra os **conectores** de dado (ver abaixo), grava `DataQuery` + `AuditLog` a cada consulta |
 | `crivo` | `PoliciesService` (CRUD de `CreditPolicy`) + `CrivoService.evaluate` (motor de decisão) |
 | `reports` | Cruzamento de dados internos + conectores em um `Report`, exportável em CSV |
+| `integrations/liro-crm` | Cliente da API externa do Liro CRM (`LiroCrmConnector`), credenciais cifradas por organização, sincronização de contatos→leads e espelhamento de decisões do Crivo como tags — ver [`docs/INTEGRACAO-LIRO-CRM.md`](./INTEGRACAO-LIRO-CRM.md) |
 
 ### Conectores de dados (`src/modules/data-intelligence/connectors`)
 

@@ -15,6 +15,7 @@ import { PostSaleModule } from './modules/post-sale/post-sale.module';
 import { DataIntelligenceModule } from './modules/data-intelligence/data-intelligence.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { CrivoModule } from './modules/crivo/crivo.module';
+import { LiroCrmModule } from './modules/integrations/liro-crm/liro-crm.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { CrivoModule } from './modules/crivo/crivo.module';
     DataIntelligenceModule,
     ReportsModule,
     CrivoModule,
+    LiroCrmModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

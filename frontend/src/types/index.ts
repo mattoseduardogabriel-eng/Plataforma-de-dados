@@ -48,6 +48,7 @@ export interface Lead {
   companyName?: string | null;
   source?: string | null;
   status: LeadStatus;
+  liroContactId?: string | null;
   assignedTo?: { id: string; name: string } | null;
   createdAt: string;
 }
@@ -277,4 +278,15 @@ export interface AuditLogItem {
   metadata?: unknown;
   createdAt: string;
   user?: { id: string; name: string; email: string } | null;
+}
+
+// ── Integrações ─────────────────────────────────────────────────────────
+export type LiroCrmStatus =
+  | { configured: false }
+  | { configured: true; baseUrl: string; apiKeySuffix: string; lastSyncedAt: string | null };
+
+export interface LiroCrmSyncResult {
+  created: number;
+  updated: number;
+  total: number;
 }
