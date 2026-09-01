@@ -14,5 +14,7 @@ COPY package*.json ./
 COPY prisma ./prisma
 RUN npm install --omit=dev && npx prisma generate
 COPY --from=builder /app/dist ./dist
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
 EXPOSE 3001
-CMD ["node", "dist/main.js"]
+CMD ["./docker-entrypoint.sh"]

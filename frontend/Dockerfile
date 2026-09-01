@@ -9,6 +9,10 @@ RUN npm run build
 
 FROM nginx:1.27-alpine AS runner
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# nginx:alpine gera /etc/nginx/conf.d/default.conf a partir deste template via
+# envsubst no start, substituindo ${PORT} — necessário porque plataformas como
+# Railway atribuem a porta dinamicamente (variável de ambiente PORT).
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+ENV PORT=80
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
