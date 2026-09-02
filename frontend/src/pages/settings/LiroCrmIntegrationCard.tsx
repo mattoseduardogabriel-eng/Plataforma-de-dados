@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { RefreshCw, Unlink } from 'lucide-react';
-import { Alert, Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Spinner } from '@/components/ui/primitives';
+import { Alert, Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, Spinner } from '@/components/ui/primitives';
 import {
   useLiroCrmStatus,
   useSaveLiroCrmCredentials,
   useRemoveLiroCrmCredentials,
   useTestLiroCrmConnection,
   useSyncLiroCrmContacts,
+  useLiroCrmKanbanStages,
+  useSetLiroCrmStageMapping,
 } from '@/hooks/useIntegrations';
+import { usePipelines } from '@/hooks/useCrm';
 import { useToast } from '@/components/ui/toast';
 import { extractErrorMessage } from '@/lib/auth-context';
 import { formatDateTime } from '@/lib/utils';
@@ -18,9 +21,25 @@ export function LiroCrmIntegrationCard({ isAdmin }: { isAdmin: boolean }) {
   const remove = useRemoveLiroCrmCredentials();
   const test = useTestLiroCrmConnection();
   const sync = useSyncLiroCrmContacts();
+  const { data: pipelines } = usePipelines();
+  const { data: liroStages } = useLiroCrmKanbanStages(!!status?.configured);
+  const setMapping = useSetLiroCrmStageMapping();
   const { toast } = useToast();
 
   const [form, setForm] = useState({ apiKey: '', baseUrl: '' });
+
+  const onChangeMapping = async (pipelineStageId: string, liroKanbanStageId: string) => {
+    const liroStage = liroStages?.find((s) => s.id === liroKanbanStageId);
+    try {
+      await setMapping.mutateAsync({
+        pipelineStageId,
+        liroKanbanStageId: liroKanbanStageId || null,
+        liroKanbanStageName: liroStage?.name ?? null,
+      });
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao salvar mapeamento', description: extractErrorMessage(err) });
+    }
+  };
 
   const onSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,6 +127,48 @@ export function LiroCrmIntegrationCard({ isAdmin }: { isAdmin: boolean }) {
                 <Button size="sm" variant="destructive" onClick={onRemove} loading={remove.isPending}>
                   <Unlink className="h-4 w-4" /> Desconectar
                 </Button>
+              </div>
+            )}
+
+            {isAdmin && (
+              <div className="border-t border-slate-300/60 pt-4">
+                <p className="mb-1 text-sm font-medium text-slate-800">Sincronização de funil</p>
+                <p className="mb-3 text-xs text-slate-500">
+                  Mover um negócio pra uma etapa mapeada reflete no Liro CRM (só se o lead já tiver conversa aberta
+                  por lá) e vice-versa, em tempo real. Etapa sem mapeamento nunca reflete em nenhuma direção.
+                </p>
+                {!liroStages ? (
+                  <Spinner className="h-5 w-5" />
+                ) : (
+                  <div className="space-y-3">
+                    {pipelines?.map((pipeline) => (
+                      <div key={pipeline.id}>
+                        {pipelines.length > 1 && <p className="mb-1 text-xs font-medium text-slate-500">{pipeline.name}</p>}
+                        <div className="space-y-1">
+                          {pipeline.stages.map((stage) => (
+                            <div key={stage.id} className="flex items-center gap-2 text-sm">
+                              <span className="w-40 shrink-0 truncate text-slate-700">{stage.name}</span>
+                              <span className="text-slate-400">↔</span>
+                              <Select
+                                className="flex-1"
+                                value={stage.liroKanbanStageId ?? ''}
+                                onChange={(e) => onChangeMapping(stage.id, e.target.value)}
+                                disabled={setMapping.isPending}
+                              >
+                                <option value="">Sem correspondência no Liro</option>
+                                {liroStages.map((liroStage) => (
+                                  <option key={liroStage.id} value={liroStage.id}>
+                                    {liroStage.name}
+                                  </option>
+                                ))}
+                              </Select>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

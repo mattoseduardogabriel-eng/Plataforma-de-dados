@@ -1,10 +1,13 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { randomBytes } from 'node:crypto';
 import { DocumentType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { SecretCipher } from '../../../common/crypto/secret-cipher';
 import { AuditService } from '../../audit/audit.service';
 import { LiroCrmConnector, LiroCredentials } from './liro-crm.connector';
 import { SaveLiroCrmCredentialsDto } from './dto/save-credentials.dto';
+import { SetStageMappingDto } from './dto/set-stage-mapping.dto';
 import { LiroContact } from './liro-crm.connector';
 
 /**
@@ -37,6 +40,7 @@ export class LiroCrmService {
     private readonly cipher: SecretCipher,
     private readonly connector: LiroCrmConnector,
     private readonly auditService: AuditService,
+    private readonly configService: ConfigService,
   ) {}
 
   async status(organizationId: string) {
@@ -58,13 +62,40 @@ export class LiroCrmService {
     // Valida a chave contra a API real antes de gravar — evita salvar uma credencial quebrada.
     await this.connector.listTags(creds);
 
+    // Token opaco da URL de webhook — gerado uma vez só, reaproveitado em
+    // reconexões (não precisa trocar só porque a pessoa reconectou).
+    const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
+    const webhookToken = org.liroWebhookToken ?? randomBytes(24).toString('hex');
+
     await this.prisma.organization.update({
       where: { id: organizationId },
       data: {
         liroCrmApiKeyEncrypted: this.cipher.encrypt(dto.apiKey),
         liroCrmBaseUrl: dto.baseUrl,
+        liroWebhookToken: webhookToken,
       },
     });
+
+    // Melhor esforço: registra nosso próprio endpoint pra sermos avisados
+    // em tempo real quando uma conversa muda de etapa no Liro. Não pode
+    // derrubar a conexão se isso falhar (ex.: versão do Liro ainda sem
+    // POST /webhooks, ou PUBLIC_API_URL não configurada aqui) — o resto da
+    // integração (sync manual, tags) continua funcionando sem isso, só o
+    // lado Liro → Aster do sincronismo de funil fica sem tempo real.
+    const publicUrl = this.configService.get<string>('PUBLIC_API_URL');
+    if (publicUrl) {
+      try {
+        await this.connector.registerWebhook(creds, `${publicUrl.replace(/\/+$/, '')}/api/integrations/liro-crm/webhook/${webhookToken}`);
+      } catch (error) {
+        this.logger.warn(
+          `Não foi possível registrar o webhook de mudança de etapa no Liro CRM (org ${organizationId}): ${
+            error instanceof Error ? error.message : error
+          }`,
+        );
+      }
+    } else {
+      this.logger.warn('PUBLIC_API_URL não configurada — pulo o registro automático do webhook de mudança de etapa no Liro CRM.');
+    }
 
     await this.auditService.log({
       organizationId,
@@ -80,7 +111,10 @@ export class LiroCrmService {
   async removeCredentials(organizationId: string, userId: string) {
     await this.prisma.organization.update({
       where: { id: organizationId },
-      data: { liroCrmApiKeyEncrypted: null, liroCrmBaseUrl: null, liroCrmLastSyncedAt: null },
+      // liroWebhookToken também zera: o token antigo não pode continuar
+      // valendo pra receber chamadas depois de desconectado, e reconectar
+      // gera um novo (ver saveCredentials).
+      data: { liroCrmApiKeyEncrypted: null, liroCrmBaseUrl: null, liroCrmLastSyncedAt: null, liroWebhookToken: null },
     });
     await this.auditService.log({
       organizationId,
@@ -278,5 +312,128 @@ export class LiroCrmService {
         }`,
       );
     }
+  }
+
+  // --- Sincronização de funil (bidirecional) ---
+  // Aster → Liro: pushStageForDeal(), chamado por deals.service.ts depois
+  // de mover um negócio manualmente. Liro → Aster: handleInboundWebhook(),
+  // chamado pelo controller quando o Liro avisa (POST .../webhook/:token)
+  // que uma conversa mudou de etapa lá. As duas pontas usam o mesmo
+  // mapeamento (PipelineStage.liroKanbanStageId), configurado manualmente
+  // em Configurações > Integrações — nomes de etapa são livres nos dois
+  // sistemas, então não dá pra casar por nome com segurança.
+
+  /** Etapas do Kanban do Liro, pra montar a tela de mapeamento. */
+  async listKanbanStages(organizationId: string) {
+    const creds = await this.getCredentials(organizationId);
+    return this.connector.listKanbanStages(creds);
+  }
+
+  async setStageMapping(organizationId: string, pipelineStageId: string, dto: SetStageMappingDto) {
+    const stage = await this.prisma.pipelineStage.findFirst({
+      where: { id: pipelineStageId, pipeline: { organizationId } },
+    });
+    if (!stage) {
+      throw new NotFoundException('Etapa do funil não encontrada.');
+    }
+    return this.prisma.pipelineStage.update({
+      where: { id: pipelineStageId },
+      data: {
+        liroKanbanStageId: dto.liroKanbanStageId ?? null,
+        liroKanbanStageName: dto.liroKanbanStageId ? (dto.liroKanbanStageName ?? null) : null,
+      },
+    });
+  }
+
+  /**
+   * Melhor esforço, nunca lança: chamado depois de mover um negócio no
+   * Kanban do Aster. Só reflete no Liro se (a) a etapa de destino tiver
+   * mapeamento configurado e (b) o lead do negócio já tiver
+   * `liroContactId` — sem isso não tem o que mover lá. Um 404 do Liro
+   * (contato sem conversa aberta) é esperado e tratado como "nada a
+   * fazer", não como erro — é exatamente o caso que a pessoa descreveu:
+   * lead sem conversa aberta não deve refletir no Liro.
+   */
+  async pushStageForDeal(organizationId: string, dealId: string): Promise<void> {
+    try {
+      const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+      if (!org?.liroCrmApiKeyEncrypted || !org.liroCrmBaseUrl) return;
+
+      const deal = await this.prisma.deal.findFirst({
+        where: { id: dealId, organizationId },
+        include: { stage: true, lead: true },
+      });
+      if (!deal?.stage.liroKanbanStageId || !deal.lead?.liroContactId) return;
+
+      const creds: LiroCredentials = { apiKey: this.cipher.decrypt(org.liroCrmApiKeyEncrypted), baseUrl: org.liroCrmBaseUrl };
+      await this.connector.moveContactKanbanStage(creds, deal.lead.liroContactId, deal.stage.liroKanbanStageId);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        this.logger.debug(`Deal ${dealId}: contato sem conversa aberta no Liro CRM, nada a refletir.`);
+        return;
+      }
+      this.logger.warn(
+        `Não foi possível refletir a etapa do negócio ${dealId} no Liro CRM: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  /**
+   * Recebe o aviso do Liro (POST /api/integrations/liro-crm/webhook/:token)
+   * de que uma conversa mudou de etapa por lá — arrastar o card no
+   * Kanban do Liro, ou qualquer outro jeito de mover de lá. Acha o lead
+   * pelo `liroContactId` (ou telefone, se o lead ainda não tinha o
+   * vínculo gravado), acha o negócio aberto mais recente desse lead, e
+   * move ele pra etapa mapeada — direto no banco, sem passar por
+   * moveDeal(), justamente pra não disparar de volta um push pro Liro
+   * (senão vira ping-pong infinito entre os dois lados).
+   */
+  async handleInboundWebhook(token: string, payload: Record<string, unknown>): Promise<void> {
+    if (payload.event !== 'conversation_moved') return;
+
+    const org = await this.prisma.organization.findFirst({ where: { liroWebhookToken: token } });
+    if (!org) {
+      this.logger.warn('Webhook do Liro CRM recebido com token desconhecido — ignorado.');
+      return;
+    }
+
+    const contact = payload.contact as { id?: string; phoneNumber?: string } | undefined;
+    const conversation = payload.conversation as { kanbanStage?: { id?: string } } | undefined;
+    const liroStageId = conversation?.kanbanStage?.id;
+    if (!contact || !liroStageId) return;
+
+    const lead = await this.prisma.lead.findFirst({
+      where: {
+        organizationId: org.id,
+        OR: [
+          ...(contact.id ? [{ liroContactId: contact.id }] : []),
+          ...(contact.phoneNumber ? [{ phone: contact.phoneNumber }] : []),
+        ],
+      },
+    });
+    if (!lead) return;
+
+    const deal = await this.prisma.deal.findFirst({
+      where: { organizationId: org.id, leadId: lead.id, status: 'ABERTO' },
+      orderBy: { updatedAt: 'desc' },
+      include: { pipeline: true },
+    });
+    if (!deal) return;
+
+    const etapaAlvo = await this.prisma.pipelineStage.findFirst({
+      where: { pipelineId: deal.pipelineId, liroKanbanStageId: liroStageId },
+    });
+    if (!etapaAlvo || etapaAlvo.id === deal.stageId) return;
+
+    await this.prisma.deal.update({ where: { id: deal.id }, data: { stageId: etapaAlvo.id } });
+    await this.auditService.log({
+      organizationId: org.id,
+      // Sem userId: veio de fora, não de uma ação de alguém logado.
+      userId: undefined,
+      action: 'LIRO_CRM_STAGE_SYNCED_FROM_LIRO',
+      entityType: 'Deal',
+      entityId: deal.id,
+      metadata: { liroKanbanStageId: liroStageId, newStageId: etapaAlvo.id } as Prisma.InputJsonValue,
+    });
   }
 }

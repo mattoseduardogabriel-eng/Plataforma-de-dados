@@ -67,6 +67,11 @@ model Organization {
   liroCrmApiKeyEncrypted String?
   liroCrmBaseUrl         String?
   liroCrmLastSyncedAt    DateTime?
+  // Token opaco usado na URL que o Liro chama de volta quando uma conversa
+  // muda de etapa (POST /api/integrations/liro-crm/webhook/:token) — não é
+  // o id da organização de propósito, pra não dar pra adivinhar/forjar
+  // eventos só sabendo o id. Gerado ao conectar (ver LiroCrmService).
+  liroWebhookToken       String?   @unique
 
   personalDataProviderConfig PersonalDataProviderConfig?
 
@@ -243,6 +248,15 @@ model PipelineStage {
   isWon      Boolean  @default(false)
   isLost     Boolean  @default(false)
   createdAt  DateTime @default(now())
+
+  // Mapeamento manual pra sincronização de funil com o Liro CRM — qual
+  // etapa do Kanban de lá corresponde a esta etapa daqui. Guarda o nome
+  // junto (não só o id) só pra exibir na tela de mapeamento sem precisar
+  // buscar de novo na API do Liro toda vez; quem manda é sempre o id na
+  // hora de mover de verdade. Nula = etapa sem correspondência, então
+  // negócio que cai/sai daqui nunca reflete no Liro (ver deals.service.ts).
+  liroKanbanStageId   String?
+  liroKanbanStageName String?
 
   deals Deal[]
 

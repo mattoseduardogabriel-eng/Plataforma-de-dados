@@ -41,6 +41,12 @@ export interface LiroCredentials {
   baseUrl: string;
 }
 
+export interface LiroKanbanStage {
+  id: string;
+  name: string;
+  order: number;
+}
+
 /**
  * Cliente HTTP fiel à "API externa do Liro CRM" (server-to-server, chave
  * `liro_<id>_<segredo>` no header Authorization). Ver
@@ -161,5 +167,33 @@ export class LiroCrmConnector {
 
   getConversation(creds: LiroCredentials, id: string) {
     return this.request<LiroConversation>(creds, 'get', `/conversations/${id}`);
+  }
+
+  async listKanbanStages(creds: LiroCredentials): Promise<LiroKanbanStage[]> {
+    const raw = await this.request<unknown>(creds, 'get', '/kanban-stages');
+    return this.unwrapList<LiroKanbanStage>(raw);
+  }
+
+  /**
+   * Endereçado pelo CONTATO de propósito (não pela conversa) — o lado de
+   * cá só guarda `Lead.liroContactId`, nunca o id da conversa. Se o
+   * contato não tiver conversa aberta no Liro, a API de lá responde 404 —
+   * deixamos subir como NotFoundException, quem chama decide se ignora
+   * (ver LiroCrmService.pushStageForDeal).
+   */
+  moveContactKanbanStage(creds: LiroCredentials, contactId: string, kanbanStageId: string) {
+    return this.request<{ conversationId: string; kanbanStage: LiroKanbanStage }>(
+      creds,
+      'patch',
+      `/contacts/${contactId}/kanban-stage`,
+      { data: { kanbanStageId } },
+    );
+  }
+
+  /** Idempotente do lado do Liro: registrar de novo com a mesma URL não duplica. */
+  registerWebhook(creds: LiroCredentials, url: string) {
+    return this.request<{ id: string; url: string; onConversationMoved: boolean }>(creds, 'post', '/webhooks', {
+      data: { url },
+    });
   }
 }

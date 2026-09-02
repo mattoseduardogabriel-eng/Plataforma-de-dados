@@ -4,6 +4,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateDealDto } from './dto/create-deal.dto';
 import { UpdateDealDto } from './dto/update-deal.dto';
 import { CloseDealDto } from './dto/close-deal.dto';
+import { LiroCrmService } from '../integrations/liro-crm/liro-crm.service';
 
 const DEAL_INCLUDE = {
   stage: true,
@@ -14,7 +15,10 @@ const DEAL_INCLUDE = {
 
 @Injectable()
 export class DealsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly liroCrmService: LiroCrmService,
+  ) {}
 
   create(organizationId: string, ownerId: string, dto: CreateDealDto) {
     return this.prisma.deal.create({
@@ -96,6 +100,12 @@ export class DealsService {
         data: { status: 'PERDIDO', closedAt: new Date() },
       });
     }
+
+    // Melhor esforço, não bloqueia a resposta nem derruba o move se falhar
+    // (ver LiroCrmService.pushStageForDeal) — reflete a etapa nova no Liro
+    // CRM só se houver mapeamento configurado e o lead já tiver conversa
+    // aberta por lá.
+    this.liroCrmService.pushStageForDeal(organizationId, id).catch(() => {});
 
     return this.findOne(organizationId, id);
   }

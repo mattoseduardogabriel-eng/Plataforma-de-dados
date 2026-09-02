@@ -67,6 +67,11 @@ export interface PipelineStage {
   colorHex: string;
   isWon: boolean;
   isLost: boolean;
+  // Mapeamento pra sincronização de funil com o Liro CRM — ver
+  // Configurações > Integrações. Nulo = sem mapeamento, essa etapa nunca
+  // reflete no Liro.
+  liroKanbanStageId?: string | null;
+  liroKanbanStageName?: string | null;
 }
 
 export interface Pipeline {
@@ -349,6 +354,12 @@ export interface LiroCrmSyncResult {
   created: number;
   updated: number;
   total: number;
+}
+
+export interface LiroKanbanStage {
+  id: string;
+  name: string;
+  order: number;
 }
 
 export const PERSONAL_DATA_PROVIDERS = [
