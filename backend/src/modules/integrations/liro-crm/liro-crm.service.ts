@@ -53,7 +53,11 @@ export class LiroCrmService {
       configured: true as const,
       baseUrl: org.liroCrmBaseUrl,
       apiKeySuffix: SecretCipher.maskSuffix(apiKey),
-      lastSyncedAt: org.liroCrmLastSyncedAt,
+      // Quando a sincronização rodou de verdade pela última vez — não o
+      // carimbo incremental interno (liroCrmLastSyncedAt), que só avança
+      // quando vem contato novo e por isso pode ficar "parado" mesmo com
+      // sincronizações rodando normalmente sem achar nada novo pra trazer.
+      lastSyncedAt: org.liroCrmLastSyncAttemptAt,
     };
   }
 
@@ -114,7 +118,13 @@ export class LiroCrmService {
       // liroWebhookToken também zera: o token antigo não pode continuar
       // valendo pra receber chamadas depois de desconectado, e reconectar
       // gera um novo (ver saveCredentials).
-      data: { liroCrmApiKeyEncrypted: null, liroCrmBaseUrl: null, liroCrmLastSyncedAt: null, liroWebhookToken: null },
+      data: {
+        liroCrmApiKeyEncrypted: null,
+        liroCrmBaseUrl: null,
+        liroCrmLastSyncedAt: null,
+        liroCrmLastSyncAttemptAt: null,
+        liroWebhookToken: null,
+      },
     });
     await this.auditService.log({
       organizationId,
@@ -261,22 +271,29 @@ export class LiroCrmService {
     // carimbo quando realmente veio gente na resposta, e usando a data real
     // dos dados — nunca regride, mesmo se algum contato vier com
     // `updatedAt` corrompido/ausente.
+    //
+    // liroCrmLastSyncAttemptAt é outra coisa: sempre grava `new Date()`
+    // aqui embaixo, rodando ou não vindo contato novo — é o que a tela
+    // mostra em "Última sincronização", pra não parecer travada só porque
+    // não tinha nada novo pra trazer daquela vez (ver status()).
+    let maisRecente: Date | undefined;
     if (contacts.length > 0) {
-      const maisRecente = contacts.reduce<Date | undefined>((max, contact) => {
+      maisRecente = contacts.reduce<Date | undefined>((max, contact) => {
         const bruto = contact.updatedAt;
         if (typeof bruto !== 'string') return max;
         const data = new Date(bruto);
         if (Number.isNaN(data.getTime())) return max;
         return !max || data > max ? data : max;
       }, org.liroCrmLastSyncedAt ?? undefined);
-
-      if (maisRecente) {
-        await this.prisma.organization.update({
-          where: { id: organizationId },
-          data: { liroCrmLastSyncedAt: maisRecente },
-        });
-      }
     }
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        liroCrmLastSyncAttemptAt: new Date(),
+        ...(maisRecente ? { liroCrmLastSyncedAt: maisRecente } : {}),
+      },
+    });
 
     await this.auditService.log({
       organizationId,

@@ -66,7 +66,19 @@ model Organization {
   // ver src/common/crypto/secret-cipher.ts), nunca em texto puro.
   liroCrmApiKeyEncrypted String?
   liroCrmBaseUrl         String?
+  // Marca-d'água da sincronização INCREMENTAL (usada no ?since= da API do
+  // Liro) — só avança quando a resposta traz contato de verdade, nunca no
+  // relógio local, pra não "envenenar" sincronizações futuras com uma
+  // resposta vazia transitória (ver LiroCrmService.syncContacts). Não é
+  // o que aparece na tela como "Última sincronização" — é
+  // liroCrmLastSyncAttemptAt, abaixo.
   liroCrmLastSyncedAt    DateTime?
+  // Quando a sincronização rodou de verdade pela última vez (manual,
+  // automática a cada 5min, ou pelo botão Atualizar do funil) —
+  // independente de ter trazido contato novo ou não. É esse campo que a
+  // tela mostra em "Última sincronização", pra não parecer travada só
+  // porque não tinha nada novo pra trazer daquela vez.
+  liroCrmLastSyncAttemptAt DateTime?
   // Token opaco usado na URL que o Liro chama de volta quando uma conversa
   // muda de etapa (POST /api/integrations/liro-crm/webhook/:token) — não é
   // o id da organização de propósito, pra não dar pra adivinhar/forjar
