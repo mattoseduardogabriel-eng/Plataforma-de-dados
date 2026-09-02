@@ -293,6 +293,8 @@ model Lead {
   // Pessoas adicionais atribuídas ao lead, além do "assignedTo" principal —
   // um contato pode ter mais de uma pessoa responsável ao mesmo tempo.
   additionalAssignees LeadAssignee[]
+  // Cliente criado direto deste lead via "Salvar na carteira" — ver Customer.leadId.
+  customer   Customer?
 
   @@index([organizationId, status])
   @@map("leads")
@@ -492,6 +494,12 @@ model Customer {
   liroContactId      String?
   dealId             String?  @unique
   deal               Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  // Lead de origem, quando o cliente foi criado direto do botão "Salvar na
+  // carteira" (sem passar pelo funil de vendas) — @unique pra um mesmo lead
+  // nunca virar dois clientes, e é como o front sabe mostrar "já está na
+  // carteira" em vez do botão de novo.
+  leadId             String?  @unique
+  lead               Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
   // Valores dos campos personalizados da organização (ver
   // CustomerFieldDefinition) — { [chave do campo]: string | boolean }.
   customFields       Json     @default("{}")

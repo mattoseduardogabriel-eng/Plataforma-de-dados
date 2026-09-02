@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, Wallet, Check } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, Card, Input, Label, Select, Spinner, Badge, EmptyState } from '@/components/ui/primitives';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@/components/ui/table';
 import { Dialog } from '@/components/ui/dialog';
-import { useLeads, useCreateLead } from '@/hooks/useCrm';
+import { useLeads, useCreateLead, useSaveLeadToWallet, useSaveLeadsToWalletBulk } from '@/hooks/useCrm';
 import { useToast } from '@/components/ui/toast';
 import { extractErrorMessage } from '@/lib/auth-context';
 import { formatDocument, formatDate } from '@/lib/utils';
-import type { LeadStatus } from '@/types';
+import type { Lead, LeadStatus } from '@/types';
 
 const STATUS_TONE: Record<LeadStatus, 'neutral' | 'info' | 'danger' | 'success'> = {
   NOVO: 'info',
@@ -23,11 +23,63 @@ export function LeadsPage() {
   const [status, setStatus] = useState('');
   const { data: leads, isLoading } = useLeads({ search: search || undefined, status: status || undefined });
   const createLead = useCreateLead();
+  const saveToWallet = useSaveLeadToWallet();
+  const saveManyToWallet = useSaveLeadsToWalletBulk();
   const { toast } = useToast();
   const navigate = useNavigate();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ name: '', document: '', email: '', phone: '', companyName: '', source: '' });
+
+  // "Salvar na carteira": um lead por vez (com nome editável antes de
+  // confirmar) ou vários de uma vez pelo checkbox (usa o nome do lead
+  // como está — sem prompt individual, senão vira um por um mesmo).
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [leadParaCarteira, setLeadParaCarteira] = useState<Lead | null>(null);
+  const [nomeCarteira, setNomeCarteira] = useState('');
+
+  function toggleSelecionado(id: string) {
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function abrirSalvarNaCarteira(lead: Lead) {
+    setLeadParaCarteira(lead);
+    setNomeCarteira(lead.name);
+  }
+
+  async function confirmarSalvarNaCarteira(e: React.FormEvent) {
+    e.preventDefault();
+    if (!leadParaCarteira) return;
+    try {
+      await saveToWallet.mutateAsync({ id: leadParaCarteira.id, name: nomeCarteira });
+      toast({ tone: 'success', title: 'Salvo na carteira de clientes' });
+      setLeadParaCarteira(null);
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao salvar na carteira', description: extractErrorMessage(err) });
+    }
+  }
+
+  async function salvarSelecionadosNaCarteira() {
+    if (!selecionados.size) return;
+    try {
+      const resultados = await saveManyToWallet.mutateAsync(Array.from(selecionados).map((leadId) => ({ leadId })));
+      const criados = resultados.filter((r) => r.status === 'criado').length;
+      const jaExistiam = resultados.filter((r) => r.status === 'ja_estava_na_carteira').length;
+      toast({
+        tone: 'success',
+        title: `${criados} salvo(s) na carteira`,
+        description: jaExistiam ? `${jaExistiam} já estava(m) na carteira e foi(ram) ignorado(s).` : undefined,
+      });
+      setSelecionados(new Set());
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao salvar selecionados na carteira', description: extractErrorMessage(err) });
+    }
+  }
 
   const onCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,6 +120,11 @@ export function LeadsPage() {
           <option value="CONVERTIDO">Convertido</option>
           <option value="DESCARTADO">Descartado</option>
         </Select>
+        {selecionados.size > 0 && (
+          <Button variant="secondary" onClick={salvarSelecionadosNaCarteira} loading={saveManyToWallet.isPending}>
+            <Wallet className="h-4 w-4" /> Salvar {selecionados.size} na carteira
+          </Button>
+        )}
       </Card>
 
       {isLoading ? (
@@ -78,6 +135,7 @@ export function LeadsPage() {
         <Table>
           <Thead>
             <Tr>
+              <Th className="w-8"></Th>
               <Th>Nome</Th>
               <Th>Documento</Th>
               <Th>Contato</Th>
@@ -85,11 +143,21 @@ export function LeadsPage() {
               <Th>Responsável</Th>
               <Th>Status</Th>
               <Th>Criado em</Th>
+              <Th>Carteira</Th>
             </Tr>
           </Thead>
           <Tbody>
             {leads.map((lead) => (
               <Tr key={lead.id} className="cursor-pointer" onClick={() => navigate(`/crm/leads/${lead.id}`)}>
+                <Td onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selecionados.has(lead.id)}
+                    onChange={() => toggleSelecionado(lead.id)}
+                    disabled={!!lead.customer}
+                    title={lead.customer ? 'Já está na carteira' : 'Selecionar'}
+                  />
+                </Td>
                 <Td className="font-medium text-slate-900">{lead.name}</Td>
                 <Td>{formatDocument(lead.document)}</Td>
                 <Td>{lead.email || lead.phone || '—'}</Td>
@@ -99,6 +167,17 @@ export function LeadsPage() {
                   <Badge tone={STATUS_TONE[lead.status]}>{lead.status}</Badge>
                 </Td>
                 <Td>{formatDate(lead.createdAt)}</Td>
+                <Td onClick={(e) => e.stopPropagation()}>
+                  {lead.customer ? (
+                    <Badge tone="success">
+                      <Check className="h-3 w-3" /> Na carteira
+                    </Badge>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={() => abrirSalvarNaCarteira(lead)}>
+                      <Wallet className="h-4 w-4" /> Salvar na carteira
+                    </Button>
+                  )}
+                </Td>
               </Tr>
             ))}
           </Tbody>
@@ -135,6 +214,22 @@ export function LeadsPage() {
           </div>
           <Button type="submit" className="w-full" loading={createLead.isPending}>
             Cadastrar lead
+          </Button>
+        </form>
+      </Dialog>
+
+      <Dialog open={!!leadParaCarteira} onClose={() => setLeadParaCarteira(null)} title="Salvar na carteira de clientes">
+        <form onSubmit={confirmarSalvarNaCarteira} className="space-y-4">
+          <p className="text-sm text-slate-500">
+            Cria um cliente ativo em Pós-venda a partir deste lead — confirme ou corrija o nome antes de salvar
+            (contato vindo do WhatsApp às vezes só tem o número).
+          </p>
+          <div>
+            <Label>Nome</Label>
+            <Input required autoFocus value={nomeCarteira} onChange={(e) => setNomeCarteira(e.target.value)} />
+          </div>
+          <Button type="submit" className="w-full" loading={saveToWallet.isPending}>
+            <Wallet className="h-4 w-4" /> Salvar na carteira
           </Button>
         </form>
       </Dialog>

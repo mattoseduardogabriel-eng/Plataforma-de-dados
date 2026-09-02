@@ -92,6 +92,9 @@ export interface Lead {
   sectorId?: string | null;
   sector?: { id: string; name: string } | null;
   additionalAssignees?: { userId: string; user: { id: string; name: string } }[];
+  // Presente (só o id) quando esse lead já foi salvo na carteira de
+  // clientes via botão "Salvar na carteira" — ver Customer.leadId.
+  customer?: { id: string } | null;
   createdAt: string;
 }
 

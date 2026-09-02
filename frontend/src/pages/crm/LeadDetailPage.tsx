@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/toast';
 import { extractErrorMessage, useAuth } from '@/lib/auth-context';
 import { formatCurrency, formatDateTime, formatDocument } from '@/lib/utils';
 import { usePushLiroCrmTag } from '@/hooks/useIntegrations';
+import { openLiroCrmConversation } from '@/lib/liro-crm';
 import type { ActivityType } from '@/types';
 
 export function LeadDetailPage() {
@@ -28,6 +29,15 @@ export function LeadDetailPage() {
   const [activity, setActivity] = useState({ type: 'LIGACAO' as ActivityType, title: '', notes: '' });
   const [tagName, setTagName] = useState('');
   const [newSectorName, setNewSectorName] = useState('');
+
+  const onOpenLiro = async () => {
+    const result = await openLiroCrmConversation(lead?.phone);
+    if (result === 'copied') {
+      toast({ tone: 'success', title: 'Telefone copiado', description: 'Cole na busca do painel do Liro CRM que abriu numa nova aba.' });
+    } else {
+      toast({ tone: 'error', title: 'Lead sem telefone cadastrado' });
+    }
+  };
 
   const onCreateSector = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,7 +156,16 @@ export function LeadDetailPage() {
           <CardContent className="space-y-2 text-sm">
             <p><span className="text-slate-400">Status:</span> <Badge tone="info">{lead.status}</Badge></p>
             <p><span className="text-slate-400">E-mail:</span> {lead.email || '—'}</p>
-            <p><span className="text-slate-400">Telefone:</span> {lead.phone || '—'}</p>
+            <p>
+              <span className="text-slate-400">Telefone:</span>{' '}
+              {lead.phone ? (
+                <button type="button" onClick={onOpenLiro} className="hover:underline" title="Abrir conversa no Liro CRM">
+                  {lead.phone}
+                </button>
+              ) : (
+                '—'
+              )}
+            </p>
             <p><span className="text-slate-400">Empresa:</span> {lead.companyName || '—'}</p>
             <p><span className="text-slate-400">Origem:</span> {lead.source || '—'}</p>
             <p><span className="text-slate-400">Responsável:</span> {lead.assignedTo?.name || '—'}</p>

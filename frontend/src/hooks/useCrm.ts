@@ -44,6 +44,40 @@ export function useUpdateLead() {
   });
 }
 
+// "Salvar na carteira": cria o Customer (Pós-venda) direto do lead, sem
+// passar pelo funil de negociação. Deixa passar o nome ajustado (o
+// contato do WhatsApp às vezes só tem telefone).
+export function useSaveLeadToWallet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, name }: { id: string; name?: string }) =>
+      (await api.post(`/crm/leads/${id}/save-to-wallet`, { name })).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crm', 'leads'] });
+      qc.invalidateQueries({ queryKey: ['post-sale', 'customers'] });
+      qc.invalidateQueries({ queryKey: ['post-sale', 'portfolio'] });
+    },
+  });
+}
+
+export type SaveLeadsToWalletBulkResultado =
+  | { leadId: string; status: 'criado'; customerId: string }
+  | { leadId: string; status: 'ja_estava_na_carteira'; customerId: string }
+  | { leadId: string; status: 'nao_encontrado' };
+
+export function useSaveLeadsToWalletBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (items: { leadId: string; name?: string }[]) =>
+      (await api.post<SaveLeadsToWalletBulkResultado[]>('/crm/leads/save-to-wallet/bulk', { items })).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crm', 'leads'] });
+      qc.invalidateQueries({ queryKey: ['post-sale', 'customers'] });
+      qc.invalidateQueries({ queryKey: ['post-sale', 'portfolio'] });
+    },
+  });
+}
+
 export interface Sector {
   id: string;
   name: string;
