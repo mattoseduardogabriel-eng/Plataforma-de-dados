@@ -158,6 +158,16 @@ export class LiroCrmService {
           : '.'),
     );
 
+    // Primeira etapa do funil padrão da empresa — todo lead NOVO da
+    // sincronização já nasce como negócio nela (ver criarNegocioParaLead
+    // abaixo), pra aparecer direto no Funil de Vendas sem precisar
+    // cadastrar manualmente. Lead que já existia não ganha negócio de
+    // novo aqui (só na primeira vez que aparece).
+    const primeiraEtapa = await this.prisma.pipelineStage.findFirst({
+      where: { pipeline: { organizationId } },
+      orderBy: [{ pipeline: { isDefault: 'desc' } }, { order: 'asc' }],
+    });
+
     let created = 0;
     let updated = 0;
     for (const contact of contacts) {
@@ -172,6 +182,7 @@ export class LiroCrmService {
           organizationId,
           OR: [{ liroContactId: contact.id }, { phone: contact.phoneNumber }],
         },
+        include: { deals: { select: { id: true }, take: 1 } },
       });
 
       if (existing) {
@@ -187,8 +198,24 @@ export class LiroCrmService {
           },
         });
         updated += 1;
+
+        // Lead sincronizado antes dessa funcionalidade existir nunca ganhou
+        // negócio — cobre retroativamente aqui, pra quem já tinha
+        // sincronizado não ficar de fora do Funil de Vendas.
+        if (primeiraEtapa && existing.deals.length === 0) {
+          await this.prisma.deal.create({
+            data: {
+              organizationId,
+              leadId: existing.id,
+              pipelineId: primeiraEtapa.pipelineId,
+              stageId: primeiraEtapa.id,
+              title: contact.name || existing.name,
+              ownerId: userId,
+            },
+          });
+        }
       } else {
-        await this.prisma.lead.create({
+        const lead = await this.prisma.lead.create({
           data: {
             organizationId,
             name: contact.name || contact.phoneNumber,
@@ -203,6 +230,23 @@ export class LiroCrmService {
           },
         });
         created += 1;
+
+        // Já nasce como negócio na 1ª etapa do funil, pra aparecer no
+        // Funil de Vendas sem precisar cadastrar manualmente — só se a
+        // empresa já tiver algum funil configurado (sempre tem, ver seed,
+        // mas não custa checar).
+        if (primeiraEtapa) {
+          await this.prisma.deal.create({
+            data: {
+              organizationId,
+              leadId: lead.id,
+              pipelineId: primeiraEtapa.pipelineId,
+              stageId: primeiraEtapa.id,
+              title: lead.name,
+              ownerId: userId,
+            },
+          });
+        }
       }
     }
 
