@@ -5,13 +5,14 @@ import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, 
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog } from '@/components/ui/dialog';
 import { useOrganization, useUpdateOrganization, useOrgUsers, useCreateUser, useUpdateUser } from '@/hooks/useUsers';
+import { useSectors } from '@/hooks/useCrm';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/toast';
 import { extractErrorMessage } from '@/lib/auth-context';
 import { LiroCrmIntegrationCard } from './LiroCrmIntegrationCard';
 import { PersonalDataProviderCard } from './PersonalDataProviderCard';
 import { FeaturesSettingsCard } from './FeaturesSettingsCard';
-import type { Role } from '@/types';
+import type { Role, User } from '@/types';
 
 const ROLES: Role[] = ['ADMIN', 'GESTOR', 'VENDEDOR', 'FINANCEIRO', 'ATENDIMENTO', 'ANALISTA'];
 
@@ -31,10 +32,34 @@ export function SettingsPage() {
   }, [org]);
 
   const { data: users, isLoading: loadingUsers } = useOrgUsers();
+  const { data: sectors } = useSectors();
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [userForm, setUserForm] = useState({ name: '', email: '', password: '', role: 'VENDEDOR' as Role });
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editForm, setEditForm] = useState({ sectorId: '', liroOperatorId: '' });
+
+  const openEdit = (u: User) => {
+    setEditingUser(u);
+    setEditForm({ sectorId: u.sectorId ?? '', liroOperatorId: u.liroOperatorId ?? '' });
+  };
+
+  const onSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    try {
+      await updateUser.mutateAsync({
+        id: editingUser.id,
+        sectorId: editForm.sectorId || null,
+        liroOperatorId: editForm.liroOperatorId || null,
+      });
+      toast({ tone: 'success', title: 'Usuário atualizado' });
+      setEditingUser(null);
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao atualizar usuário', description: extractErrorMessage(err) });
+    }
+  };
 
   const onSaveOrg = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,10 +149,19 @@ export function SettingsPage() {
                     <div>
                       <p className="font-medium text-slate-800">{u.name}</p>
                       <p className="text-xs text-slate-400">{u.email}</p>
+                      {u.sector && <p className="text-xs text-slate-400">Setor: {u.sector.name}</p>}
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge tone="neutral">{u.role}</Badge>
                       <Badge tone={u.active ? 'success' : 'danger'}>{u.active ? 'Ativo' : 'Inativo'}</Badge>
+                      {isAdmin && (
+                        <button
+                          className="text-xs font-medium text-brand-300 hover:underline"
+                          onClick={() => openEdit(u)}
+                        >
+                          Editar
+                        </button>
+                      )}
                       {isAdmin && u.id !== currentUser?.id && (
                         <button
                           className="text-xs font-medium text-brand-300 hover:underline"
@@ -175,6 +209,30 @@ export function SettingsPage() {
             </Select>
           </div>
           <Button type="submit" className="w-full" loading={createUser.isPending}>Criar usuário</Button>
+        </form>
+      </Dialog>
+
+      <Dialog open={!!editingUser} onClose={() => setEditingUser(null)} title={`Editar ${editingUser?.name ?? ''}`}>
+        <form onSubmit={onSaveEdit} className="space-y-4">
+          <div>
+            <Label>Setor</Label>
+            <Select value={editForm.sectorId} onChange={(e) => setEditForm((f) => ({ ...f, sectorId: e.target.value }))}>
+              <option value="">Sem setor</option>
+              {sectors?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          </div>
+          <div>
+            <Label>ID do operador no Liro CRM</Label>
+            <Input
+              value={editForm.liroOperatorId}
+              onChange={(e) => setEditForm((f) => ({ ...f, liroOperatorId: e.target.value }))}
+              placeholder="Opcional — vincula este usuário ao operador correspondente no Liro"
+            />
+            <p className="mt-1 text-xs text-slate-400">
+              Vínculo informativo — a API do Liro CRM ainda não confirma esse conceito oficialmente.
+            </p>
+          </div>
+          <Button type="submit" className="w-full" loading={updateUser.isPending}>Salvar</Button>
         </form>
       </Dialog>
     </div>

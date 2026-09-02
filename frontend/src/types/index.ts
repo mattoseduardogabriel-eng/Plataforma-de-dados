@@ -8,6 +8,11 @@ export interface User {
   active?: boolean;
   organizationId?: string;
   createdAt?: string;
+  sectorId?: string | null;
+  sector?: { id: string; name: string } | null;
+  // Vínculo best-effort com o operador correspondente no Liro CRM — a API
+  // real do Liro não confirma esse conceito, é só um campo pra uso futuro.
+  liroOperatorId?: string | null;
 }
 
 export interface Organization {
