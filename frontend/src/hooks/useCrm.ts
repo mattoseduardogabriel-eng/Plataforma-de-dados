@@ -36,7 +36,7 @@ export function useLeads(params: { status?: string; search?: string } = {}) {
 export function useLead(id?: string) {
   return useQuery({
     queryKey: ['crm', 'leads', id],
-    queryFn: async () => (await api.get(`/crm/leads/${id}`)).data,
+    queryFn: async () => (await api.get<Lead & { activities: Activity[] }>(`/crm/leads/${id}`)).data,
     enabled: !!id,
   });
 }

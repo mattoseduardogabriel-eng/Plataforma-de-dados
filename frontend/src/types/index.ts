@@ -100,6 +100,8 @@ export interface Lead {
   // Presente (só o id) quando esse lead já foi salvo na carteira de
   // clientes via botão "Salvar na carteira" — ver Customer.leadId.
   customer?: { id: string } | null;
+  // Só vem preenchido no detalhe (GET /crm/leads/:id), não na listagem.
+  deals?: Deal[];
   createdAt: string;
 }
 
