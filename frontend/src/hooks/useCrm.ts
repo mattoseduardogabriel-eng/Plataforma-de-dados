@@ -146,7 +146,12 @@ export function useCreateDeal() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: Record<string, unknown>) => (await api.post('/crm/deals', payload)).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm', 'deals'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crm', 'deals'] });
+      // Pode ter criado um lead novo por trás (ver contactName/contactPhone
+      // em CreateDealDto), então a lista de Leads também pode ter mudado.
+      qc.invalidateQueries({ queryKey: ['crm', 'leads'] });
+    },
   });
 }
 
