@@ -23,10 +23,29 @@ model Organization {
   // guarda dados de negócio (CRM/financeiro/pós-venda) de verdade.
   isPlatform Boolean  @default(false)
   // Empresa suspensa não consegue logar (ver AuthService.validateCredentials).
-  // Controlado pelo backoffice do dono da plataforma.
+  // Controlado pelo backoffice do dono da plataforma — independente da
+  // aprovação/assinatura, serve pra bloqueio manual (ex.: abuso).
   active     Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  // Empresa que se auto-cadastra em /registrar entra como PENDING e não
+  // consegue logar até o dono da plataforma aprovar. Empresa criada direto
+  // pelo backoffice já nasce APPROVED. Organizações antigas/técnicas também
+  // ficam APPROVED por padrão (coluna nova, default preserva o que já existe).
+  approvalStatus     OrganizationApprovalStatus @default(APPROVED)
+  approvedAt         DateTime?
+  rejectionReason    String?
+
+  // Controle manual de assinatura mensal — sem gateway de pagamento integrado
+  // ainda, o dono da plataforma confere o pagamento por fora e atualiza aqui.
+  subscriptionStatus     SubscriptionStatus @default(ACTIVE)
+  subscriptionPlan       String?
+  subscriptionPriceCents Int?
+  nextBillingAt          DateTime?
+  // Preenchido quando a empresa é aprovada (ou editado manualmente); login é
+  // bloqueado se subscriptionStatus continuar TRIAL depois dessa data.
+  trialEndsAt            DateTime?
 
   // Integração com o Liro CRM (API externa, chave por organização — ver
   // docs/INTEGRACAO-LIRO-CRM.md). A chave é guardada cifrada (AES-256-GCM,
@@ -87,6 +106,19 @@ model CustomerFieldDefinition {
 
   @@unique([organizationId, key])
   @@map("customer_field_definitions")
+}
+
+enum OrganizationApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELED
 }
 
 enum Role {

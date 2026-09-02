@@ -5,8 +5,17 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationStatusDto } from './dto/update-organization-status.dto';
+import { DecideApprovalDto } from './dto/decide-approval.dto';
+import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 
 const SALT_ROUNDS = 10;
+const DEFAULT_TRIAL_DAYS = 14;
+
+function daysFromNow(days: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d;
+}
 
 @Injectable()
 export class BackofficeService {
@@ -55,9 +64,19 @@ export class BackofficeService {
 
     const passwordHash = await bcrypt.hash(dto.adminPassword, SALT_ROUNDS);
 
+    const trialDays = dto.trialDays ?? DEFAULT_TRIAL_DAYS;
+
     const organization = await this.prisma.$transaction(async (tx) => {
       const organization = await tx.organization.create({
-        data: { name: dto.organizationName, cnpj: dto.organizationCnpj },
+        data: {
+          name: dto.organizationName,
+          cnpj: dto.organizationCnpj,
+          // Criada direto pelo backoffice = já aprovada pelo dono da plataforma.
+          approvalStatus: 'APPROVED',
+          approvedAt: new Date(),
+          subscriptionStatus: 'TRIAL',
+          trialEndsAt: trialDays > 0 ? daysFromNow(trialDays) : null,
+        },
       });
       await tx.user.create({
         data: {
@@ -116,6 +135,71 @@ export class BackofficeService {
       action: dto.active ? 'BACKOFFICE_ORGANIZATION_REACTIVATED' : 'BACKOFFICE_ORGANIZATION_SUSPENDED',
       entityType: 'Organization',
       entityId: id,
+    });
+
+    return organization;
+  }
+
+  /** Aprova ou rejeita o cadastro de uma empresa que se auto-registrou em /registrar. */
+  async decideApproval(id: string, dto: DecideApprovalDto, actorUserId: string) {
+    const existing = await this.getOrganization(id);
+    if (existing.approvalStatus !== 'PENDING') {
+      throw new ConflictException('Este cadastro já foi analisado.');
+    }
+
+    const organization =
+      dto.decision === 'APPROVE'
+        ? await this.prisma.organization.update({
+            where: { id },
+            data: {
+              approvalStatus: 'APPROVED',
+              approvedAt: new Date(),
+              rejectionReason: null,
+              subscriptionStatus: 'TRIAL',
+              trialEndsAt: daysFromNow(dto.trialDays ?? DEFAULT_TRIAL_DAYS),
+            },
+          })
+        : await this.prisma.organization.update({
+            where: { id },
+            data: {
+              approvalStatus: 'REJECTED',
+              rejectionReason: dto.rejectionReason ?? null,
+            },
+          });
+
+    await this.auditService.log({
+      organizationId: id,
+      userId: actorUserId,
+      action: dto.decision === 'APPROVE' ? 'BACKOFFICE_ORGANIZATION_APPROVED' : 'BACKOFFICE_ORGANIZATION_REJECTED',
+      entityType: 'Organization',
+      entityId: id,
+      metadata: dto.decision === 'APPROVE' ? { trialDays: dto.trialDays ?? DEFAULT_TRIAL_DAYS } : { rejectionReason: dto.rejectionReason },
+    });
+
+    return organization;
+  }
+
+  /** Edita manualmente o estado da assinatura mensal (sem gateway de pagamento integrado). */
+  async updateSubscription(id: string, dto: UpdateSubscriptionDto, actorUserId: string) {
+    await this.getOrganization(id);
+    const organization = await this.prisma.organization.update({
+      where: { id },
+      data: {
+        subscriptionStatus: dto.subscriptionStatus,
+        subscriptionPlan: dto.subscriptionPlan,
+        subscriptionPriceCents: dto.subscriptionPriceCents,
+        nextBillingAt: dto.nextBillingAt ? new Date(dto.nextBillingAt) : undefined,
+        trialEndsAt: dto.trialEndsAt ? new Date(dto.trialEndsAt) : undefined,
+      },
+    });
+
+    await this.auditService.log({
+      organizationId: id,
+      userId: actorUserId,
+      action: 'BACKOFFICE_SUBSCRIPTION_UPDATED',
+      entityType: 'Organization',
+      entityId: id,
+      metadata: { subscriptionStatus: dto.subscriptionStatus },
     });
 
     return organization;

@@ -4,6 +4,8 @@ import { Role } from '@prisma/client';
 import { BackofficeService } from './backoffice.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationStatusDto } from './dto/update-organization-status.dto';
+import { DecideApprovalDto } from './dto/decide-approval.dto';
+import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 
@@ -40,5 +42,23 @@ export class BackofficeController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.backofficeService.setOrganizationStatus(id, dto, user.id);
+  }
+
+  @Patch(':id/approval')
+  decideApproval(
+    @Param('id') id: string,
+    @Body() dto: DecideApprovalDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.backofficeService.decideApproval(id, dto, user.id);
+  }
+
+  @Patch(':id/subscription')
+  updateSubscription(
+    @Param('id') id: string,
+    @Body() dto: UpdateSubscriptionDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.backofficeService.updateSubscription(id, dto, user.id);
   }
 }

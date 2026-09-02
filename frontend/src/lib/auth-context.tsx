@@ -20,7 +20,9 @@ interface AuthContextValue {
   organization: Organization | null;
   loading: boolean;
   login: (payload: LoginPayload) => Promise<void>;
-  registerOrganization: (payload: RegisterOrganizationPayload) => Promise<void>;
+  // Não loga automaticamente — a empresa entra pendente de aprovação do dono
+  // da plataforma. Retorna a mensagem pra exibir na tela de cadastro.
+  registerOrganization: (payload: RegisterOrganizationPayload) => Promise<{ message: string }>;
   logout: () => Promise<void>;
 }
 
@@ -68,10 +70,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const registerOrganization = useCallback(async (payload: RegisterOrganizationPayload) => {
     const { data } = await api.post('/auth/register-organization', payload);
-    setAccessToken(data.accessToken);
-    setUser(data.user);
-    await loadMe();
-  }, [loadMe]);
+    return { message: data.message as string };
+  }, []);
 
   const logout = useCallback(async () => {
     try {

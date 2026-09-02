@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 
 export class CreateOrganizationDto {
   @IsString()
@@ -19,4 +19,12 @@ export class CreateOrganizationDto {
   @IsString()
   @MinLength(8)
   adminPassword!: string;
+
+  // Empresa criada direto pelo backoffice já nasce aprovada — só o período
+  // de teste é configurável (padrão 14 dias, 0 = sem teste/já paga).
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  trialDays?: number;
 }

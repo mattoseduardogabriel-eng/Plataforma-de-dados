@@ -20,9 +20,19 @@ export interface Organization {
 }
 
 // ── Backoffice (dono da plataforma) ────────────────────────────────────
+export type OrganizationApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type SubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
+
 export interface BackofficeOrganization extends Organization {
   active: boolean;
   createdAt: string;
+  approvalStatus: OrganizationApprovalStatus;
+  rejectionReason?: string | null;
+  subscriptionStatus: SubscriptionStatus;
+  subscriptionPlan?: string | null;
+  subscriptionPriceCents?: number | null;
+  nextBillingAt?: string | null;
+  trialEndsAt?: string | null;
   counts: { users: number; leads: number; customers: number; deals: number };
 }
 

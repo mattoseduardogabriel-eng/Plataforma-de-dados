@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { Orbit } from 'lucide-react';
 import { useAuth, extractErrorMessage } from '@/lib/auth-context';
 import { Button, Card, Input, Label, Alert } from '@/components/ui/primitives';
@@ -7,7 +7,6 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 export function RegisterOrganizationPage() {
   const { registerOrganization, user, loading } = useAuth();
-  const navigate = useNavigate();
   const [form, setForm] = useState({
     organizationName: '',
     organizationCnpj: '',
@@ -17,6 +16,7 @@ export function RegisterOrganizationPage() {
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submittedMessage, setSubmittedMessage] = useState<string | null>(null);
 
   if (!loading && user) {
     return <Navigate to="/" replace />;
@@ -30,14 +30,32 @@ export function RegisterOrganizationPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await registerOrganization(form);
-      navigate('/');
+      const { message } = await registerOrganization(form);
+      setSubmittedMessage(message);
     } catch (err) {
       setError(extractErrorMessage(err, 'Não foi possível criar a organização.'));
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (submittedMessage) {
+    return (
+      <div className="star-field relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 px-4 py-10">
+        <ThemeToggle className="absolute right-4 top-4" />
+        <div className="relative w-full max-w-sm text-center">
+          <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-brand-500 text-slate-950 shadow-glow">
+            <Orbit className="h-5 w-5" />
+          </div>
+          <h1 className="mb-2 text-2xl font-bold text-slate-900">Cadastro enviado!</h1>
+          <p className="mb-6 text-sm text-slate-500">{submittedMessage}</p>
+          <Link to="/login" className="font-medium text-brand-300 hover:underline">
+            Voltar pro login
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="star-field relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 px-4 py-10">

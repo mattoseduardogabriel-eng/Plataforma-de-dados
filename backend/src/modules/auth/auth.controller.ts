@@ -41,13 +41,10 @@ export class AuthController {
 
   @Public()
   @Post('register-organization')
-  async registerOrganization(
-    @Body() dto: RegisterOrganizationDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const { refreshToken, ...result } = await this.authService.registerOrganization(dto);
-    this.setRefreshCookie(res, refreshToken);
-    return result;
+  async registerOrganization(@Body() dto: RegisterOrganizationDto) {
+    // Não loga automaticamente: a empresa fica pendente de aprovação do
+    // dono da plataforma (ver AuthService.registerOrganization).
+    return this.authService.registerOrganization(dto);
   }
 
   @Public()

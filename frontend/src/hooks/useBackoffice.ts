@@ -42,3 +42,38 @@ export function useSetOrganizationStatus() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['backoffice', 'organizations'] }),
   });
 }
+
+export function useDecideOrganizationApproval() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      decision,
+      trialDays,
+      rejectionReason,
+    }: {
+      id: string;
+      decision: 'APPROVE' | 'REJECT';
+      trialDays?: number;
+      rejectionReason?: string;
+    }) => (await api.patch(`/backoffice/organizations/${id}/approval`, { decision, trialDays, rejectionReason })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backoffice', 'organizations'] }),
+  });
+}
+
+export interface UpdateSubscriptionPayload {
+  subscriptionStatus: 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
+  subscriptionPlan?: string;
+  subscriptionPriceCents?: number;
+  nextBillingAt?: string;
+  trialEndsAt?: string;
+}
+
+export function useUpdateOrganizationSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & UpdateSubscriptionPayload) =>
+      (await api.patch(`/backoffice/organizations/${id}/subscription`, payload)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backoffice', 'organizations'] }),
+  });
+}
