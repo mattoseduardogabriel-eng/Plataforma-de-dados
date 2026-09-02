@@ -391,12 +391,17 @@ export class LiroCrmService {
 
   /**
    * Melhor esforço, nunca lança: chamado depois de mover um negócio no
-   * Kanban do Aster. Só reflete no Liro se (a) a etapa de destino tiver
-   * mapeamento configurado e (b) o lead do negócio já tiver
-   * `liroContactId` — sem isso não tem o que mover lá. Um 404 do Liro
-   * (contato sem conversa aberta) é esperado e tratado como "nada a
-   * fazer", não como erro — é exatamente o caso que a pessoa descreveu:
-   * lead sem conversa aberta não deve refletir no Liro.
+   * Kanban do Aster. Só reflete no Liro se a etapa de destino tiver
+   * mapeamento configurado. O lead não precisa já ter `liroContactId` —
+   * usa ensureContactId() (mesmo helper do envio de tag) pra achar/criar
+   * o contato no Liro por telefone; é por isso que um negócio criado
+   * direto no Aster com um telefone que já é conversa real no Liro
+   * também sincroniza, mesmo sem ter passado pela sincronização de
+   * contatos antes. Um 404 do Liro (contato sem conversa aberta lá,
+   * mesmo depois de criado/achado) ou lead sem telefone é esperado e
+   * tratado como "nada a fazer", não como erro — é exatamente o caso que
+   * a pessoa descreveu: lead sem conversa aberta não deve refletir no
+   * Liro.
    */
   async pushStageForDeal(organizationId: string, dealId: string): Promise<void> {
     try {
@@ -407,13 +412,14 @@ export class LiroCrmService {
         where: { id: dealId, organizationId },
         include: { stage: true, lead: true },
       });
-      if (!deal?.stage.liroKanbanStageId || !deal.lead?.liroContactId) return;
+      if (!deal?.stage.liroKanbanStageId || !deal.lead) return;
 
       const creds: LiroCredentials = { apiKey: this.cipher.decrypt(org.liroCrmApiKeyEncrypted), baseUrl: org.liroCrmBaseUrl };
-      await this.connector.moveContactKanbanStage(creds, deal.lead.liroContactId, deal.stage.liroKanbanStageId);
+      const contactId = await this.ensureContactId(creds, deal.lead);
+      await this.connector.moveContactKanbanStage(creds, contactId, deal.stage.liroKanbanStageId);
     } catch (error) {
-      if (error instanceof NotFoundException) {
-        this.logger.debug(`Deal ${dealId}: contato sem conversa aberta no Liro CRM, nada a refletir.`);
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        this.logger.debug(`Deal ${dealId}: sem conversa aberta (ou sem telefone) no Liro CRM, nada a refletir.`);
         return;
       }
       this.logger.warn(
