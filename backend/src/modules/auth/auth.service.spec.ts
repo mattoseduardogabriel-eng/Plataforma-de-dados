@@ -17,6 +17,13 @@ describe('AuthService', () => {
     active: true,
     tokenVersion: 0,
     passwordHash: '',
+    organization: {
+      active: true,
+      approvalStatus: 'APPROVED',
+      rejectionReason: null,
+      subscriptionStatus: 'ACTIVE',
+      trialEndsAt: null,
+    },
   };
 
   beforeAll(async () => {

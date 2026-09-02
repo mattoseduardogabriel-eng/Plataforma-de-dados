@@ -3,8 +3,10 @@ import { ApiTags } from '@nestjs/swagger';
 import { ChurnService } from './churn.service';
 import { CreateChurnSignalDto } from './dto/create-churn-signal.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('pós-venda')
+@RequireFeature('pos_venda')
 @Controller('post-sale')
 export class ChurnController {
   constructor(private readonly churnService: ChurnService) {}

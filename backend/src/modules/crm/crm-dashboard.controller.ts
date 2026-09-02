@@ -2,8 +2,10 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CrmDashboardService } from './crm-dashboard.service';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('crm')
+@RequireFeature('crm')
 @Controller('crm/dashboard')
 export class CrmDashboardController {
   constructor(private readonly dashboardService: CrmDashboardService) {}

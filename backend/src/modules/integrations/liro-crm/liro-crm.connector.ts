@@ -92,8 +92,35 @@ export class LiroCrmConnector {
     }
   }
 
-  listContacts(creds: LiroCredentials, params: { since?: string; phoneNumber?: string; limit?: number } = {}) {
-    return this.request<LiroContact[]>(creds, 'get', '/contacts', { params });
+  async listContacts(
+    creds: LiroCredentials,
+    params: { since?: string; phoneNumber?: string; limit?: number } = {},
+  ): Promise<LiroContact[]> {
+    const raw = await this.request<unknown>(creds, 'get', '/contacts', { params });
+    return this.unwrapList<LiroContact>(raw);
+  }
+
+  /**
+   * APIs REST variam muito em como envelopam listas — algumas devolvem um
+   * array puro, outras `{ data: [...] }`, `{ items: [...] }`,
+   * `{ results: [...] }` ou uma página `{ contacts: [...] }`. Sem contrato
+   * 100% confirmado contra o Liro real, aceitamos os formatos mais comuns
+   * em vez de quebrar (ou pior, sincronizar silenciosamente 0 contatos)
+   * quando a resposta não é um array puro.
+   */
+  private unwrapList<T>(raw: unknown): T[] {
+    if (Array.isArray(raw)) return raw as T[];
+    if (raw && typeof raw === 'object') {
+      const obj = raw as Record<string, unknown>;
+      for (const key of ['data', 'items', 'results', 'contacts', 'conversations']) {
+        if (Array.isArray(obj[key])) return obj[key] as T[];
+      }
+    }
+    this.logger.warn(
+      `Resposta do Liro CRM não veio como array nem em um envelope conhecido (data/items/results) — ` +
+        `verifique o formato real da API. Payload: ${JSON.stringify(raw).slice(0, 300)}`,
+    );
+    return [];
   }
 
   getContact(creds: LiroCredentials, id: string) {
@@ -112,8 +139,9 @@ export class LiroCrmConnector {
     return this.request<LiroContact>(creds, 'patch', `/contacts/${id}`, { data: input });
   }
 
-  listTags(creds: LiroCredentials) {
-    return this.request<LiroTag[]>(creds, 'get', '/tags');
+  async listTags(creds: LiroCredentials): Promise<LiroTag[]> {
+    const raw = await this.request<unknown>(creds, 'get', '/tags');
+    return this.unwrapList<LiroTag>(raw);
   }
 
   tagContact(creds: LiroCredentials, contactId: string, tagName: string) {
@@ -122,8 +150,12 @@ export class LiroCrmConnector {
     });
   }
 
-  listConversations(creds: LiroCredentials, params: { since?: string; limit?: number } = {}) {
-    return this.request<LiroConversation[]>(creds, 'get', '/conversations', { params });
+  async listConversations(
+    creds: LiroCredentials,
+    params: { since?: string; limit?: number } = {},
+  ): Promise<LiroConversation[]> {
+    const raw = await this.request<unknown>(creds, 'get', '/conversations', { params });
+    return this.unwrapList<LiroConversation>(raw);
   }
 
   getConversation(creds: LiroCredentials, id: string) {

@@ -47,6 +47,12 @@ model Organization {
   // bloqueado se subscriptionStatus continuar TRIAL depois dessa data.
   trialEndsAt            DateTime?
 
+  // Teto de ferramentas que o dono da plataforma liberou pra essa empresa
+  // (ver backend/src/common/features/platform-features.ts). Chaves fora
+  // dessa lista ficam bloqueadas pra todo mundo da empresa, mesmo que o
+  // ADMIN dela tente liberar por setor/usuário — ver FeaturesService.
+  enabledFeatures String[] @default(["crm","financeiro","pos_venda","consulta_cnpj","consulta_cpf","consulta_telefone","consulta_credito","consulta_parentes","crivo","relatorios_cruzamento","integracao_liro_crm"])
+
   // Integração com o Liro CRM (API externa, chave por organização — ver
   // docs/INTEGRACAO-LIRO-CRM.md). A chave é guardada cifrada (AES-256-GCM,
   // ver src/common/crypto/secret-cipher.ts), nunca em texto puro.
@@ -147,6 +153,19 @@ model User {
   tokenVersion        Int      @default(0)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+
+  // Setor do usuário dentro da empresa — usado tanto pra atribuição de
+  // leads quanto como escopo de bloqueio de ferramentas (ver
+  // OrganizationSector.disabledFeatures).
+  sectorId String?
+  sector   OrganizationSector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  // Ferramentas desligadas especificamente pra este usuário pelo
+  // ADMIN/GESTOR da empresa — tem prioridade sobre o setor.
+  disabledFeatures String[] @default([])
+  // ID do operador correspondente no Liro CRM (vínculo best-effort — a API
+  // real do Liro não tem esse conceito confirmado; guardado pra uso futuro
+  // caso a integração evolua pra atribuir conversas por operador).
+  liroOperatorId   String?
 
   auditLogs           AuditLog[]
   leadsCreated        Lead[]        @relation("LeadCreatedBy")
@@ -277,7 +296,12 @@ model OrganizationSector {
   name           String
   createdAt      DateTime @default(now())
 
-  leads Lead[]
+  // Ferramentas que o ADMIN/GESTOR da empresa desligou pra esse setor —
+  // só pode desligar o que já está dentro do teto de Organization.enabledFeatures.
+  disabledFeatures String[] @default([])
+
+  leads   Lead[]
+  members User[]
 
   @@unique([organizationId, name])
   @@map("organization_sectors")

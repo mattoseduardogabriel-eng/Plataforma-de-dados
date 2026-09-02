@@ -33,6 +33,7 @@ export interface BackofficeOrganization extends Organization {
   subscriptionPriceCents?: number | null;
   nextBillingAt?: string | null;
   trialEndsAt?: string | null;
+  enabledFeatures: string[];
   counts: { users: number; leads: number; customers: number; deals: number };
 }
 

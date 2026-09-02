@@ -18,4 +18,17 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @ApiPropertyOptional({ description: 'Setor do usuário — null pra remover de qualquer setor.' })
+  @IsOptional()
+  @IsString()
+  sectorId?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'ID do operador correspondente no Liro CRM — vínculo best-effort, não confirmado contra a API real do Liro.',
+  })
+  @IsOptional()
+  @IsString()
+  liroOperatorId?: string | null;
 }

@@ -116,6 +116,13 @@ export class LiroCrmService {
     const since = org.liroCrmLastSyncedAt?.toISOString();
 
     const contacts = await this.connector.listContacts(creds, { since, limit: 500 });
+    this.logger.log(
+      `Sync Liro CRM (org ${organizationId}): ${contacts.length} contato(s) recebido(s) da API` +
+        (since ? ` desde ${since}` : ' (primeira sincronização, sem filtro de data)') +
+        (contacts.length === 0
+          ? ' — se você esperava contatos aqui, confirme o formato real da resposta de GET /contacts contra a API do Liro.'
+          : '.'),
+    );
 
     let created = 0;
     let updated = 0;

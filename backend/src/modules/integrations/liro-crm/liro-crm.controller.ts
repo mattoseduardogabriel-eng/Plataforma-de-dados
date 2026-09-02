@@ -6,8 +6,10 @@ import { SaveLiroCrmCredentialsDto } from './dto/save-credentials.dto';
 import { PushLiroTagDto } from './dto/push-tag.dto';
 import { CurrentUser, AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { RequireFeature } from '../../../common/decorators/require-feature.decorator';
 
 @ApiTags('integrações')
+@RequireFeature('integracao_liro_crm')
 @Controller('integrations/liro-crm')
 export class LiroCrmController {
   constructor(private readonly liroCrmService: LiroCrmService) {}

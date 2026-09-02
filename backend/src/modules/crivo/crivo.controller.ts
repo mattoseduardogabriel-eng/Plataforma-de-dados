@@ -3,8 +3,10 @@ import { ApiTags } from '@nestjs/swagger';
 import { CrivoService } from './crivo.service';
 import { EvaluateCrivoDto } from './dto/evaluate-crivo.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('crivo')
+@RequireFeature('crivo')
 @Controller('crivo')
 export class CrivoController {
   constructor(private readonly crivoService: CrivoService) {}

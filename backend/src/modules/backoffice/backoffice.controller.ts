@@ -6,6 +6,8 @@ import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationStatusDto } from './dto/update-organization-status.dto';
 import { DecideApprovalDto } from './dto/decide-approval.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
+import { SetOrganizationFeaturesDto } from './dto/set-organization-features.dto';
+import { FeaturesService } from '../features/features.service';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 
@@ -18,7 +20,10 @@ import { Roles } from '../../common/decorators/roles.decorator';
 @Roles(Role.SUPER_ADMIN)
 @Controller('backoffice/organizations')
 export class BackofficeController {
-  constructor(private readonly backofficeService: BackofficeService) {}
+  constructor(
+    private readonly backofficeService: BackofficeService,
+    private readonly featuresService: FeaturesService,
+  ) {}
 
   @Get()
   list() {
@@ -60,5 +65,15 @@ export class BackofficeController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.backofficeService.updateSubscription(id, dto, user.id);
+  }
+
+  /** Teto de ferramentas que essa empresa tem direito de usar. */
+  @Patch(':id/features')
+  setFeatures(
+    @Param('id') id: string,
+    @Body() dto: SetOrganizationFeaturesDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.featuresService.setOrganizationFeatures(id, dto.enabledFeatures, user.id);
   }
 }

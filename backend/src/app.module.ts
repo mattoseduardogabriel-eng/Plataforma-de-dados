@@ -5,6 +5,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { FeatureGuard } from './common/guards/feature.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
@@ -18,6 +19,7 @@ import { CrivoModule } from './modules/crivo/crivo.module';
 import { LiroCrmModule } from './modules/integrations/liro-crm/liro-crm.module';
 import { PersonalDataProviderModule } from './modules/integrations/personal-data-provider/personal-data-provider.module';
 import { BackofficeModule } from './modules/backoffice/backoffice.module';
+import { FeaturesModule } from './modules/features/features.module';
 
 @Module({
   imports: [
@@ -37,11 +39,13 @@ import { BackofficeModule } from './modules/backoffice/backoffice.module';
     LiroCrmModule,
     PersonalDataProviderModule,
     BackofficeModule,
+    FeaturesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: FeatureGuard },
   ],
 })
 export class AppModule {}

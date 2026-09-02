@@ -3,8 +3,10 @@ import { ApiTags } from '@nestjs/swagger';
 import { ActivitiesService } from './activities.service';
 import { CreateActivityDto } from './dto/create-activity.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('crm')
+@RequireFeature('crm')
 @Controller('crm/activities')
 export class ActivitiesController {
   constructor(private readonly activitiesService: ActivitiesService) {}

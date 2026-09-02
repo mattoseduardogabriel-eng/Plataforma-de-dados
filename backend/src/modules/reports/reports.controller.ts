@@ -4,8 +4,10 @@ import { Response } from 'express';
 import { ReportsService } from './reports.service';
 import { GenerateReportDto } from './dto/generate-report.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('cruzamento de dados')
+@RequireFeature('relatorios_cruzamento')
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}

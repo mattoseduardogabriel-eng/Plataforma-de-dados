@@ -4,8 +4,10 @@ import { LeadsService } from './leads.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('crm')
+@RequireFeature('crm')
 @Controller('crm/leads')
 export class LeadsController {
   constructor(private readonly leadsService: LeadsService) {}

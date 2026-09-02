@@ -7,8 +7,10 @@ import { ImportCustomersDto } from './dto/import-customers.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { Role } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('pós-venda')
+@RequireFeature('pos_venda')
 @Controller('post-sale/customers')
 export class CustomersController {
   constructor(private readonly customersService: CustomersService) {}

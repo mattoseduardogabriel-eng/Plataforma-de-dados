@@ -12,6 +12,9 @@ const SAFE_SELECT = {
   role: true,
   active: true,
   createdAt: true,
+  sectorId: true,
+  sector: { select: { id: true, name: true } },
+  liroOperatorId: true,
 };
 
 @Injectable()

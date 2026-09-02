@@ -6,8 +6,10 @@ import { UpdateDealDto } from './dto/update-deal.dto';
 import { MoveDealDto } from './dto/move-deal.dto';
 import { CloseDealDto } from './dto/close-deal.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('crm')
+@RequireFeature('crm')
 @Controller('crm/deals')
 export class DealsController {
   constructor(private readonly dealsService: DealsService) {}

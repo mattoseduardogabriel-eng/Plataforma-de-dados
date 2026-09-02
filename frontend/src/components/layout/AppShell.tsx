@@ -3,11 +3,22 @@ import { NavLink } from 'react-router-dom';
 import { LogOut, Menu, X, Orbit } from 'lucide-react';
 import { navGroups } from './nav-config';
 import { useAuth } from '@/lib/auth-context';
+import { useEffectiveFeatures } from '@/hooks/useFeatures';
 import { cn, initials } from '@/lib/utils';
 import { PRODUCT_NAME, PRODUCT_TAGLINE } from '@/lib/brand';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 function Sidebar({ mobileOpen, onCloseMobile }: { mobileOpen: boolean; onCloseMobile: () => void }) {
+  // Sem dado ainda (carregando) mostra tudo — evita o menu "piscar" vazio;
+  // depois que carrega, itens de ferramenta desligada somem.
+  const { data: effectiveFeatures } = useEffectiveFeatures();
+  const visibleGroups = navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.featureKey || !effectiveFeatures || effectiveFeatures.includes(item.featureKey)),
+    }))
+    .filter((group) => group.items.length > 0);
+
   return (
     <>
       <div
@@ -36,7 +47,7 @@ function Sidebar({ mobileOpen, onCloseMobile }: { mobileOpen: boolean; onCloseMo
           </button>
         </div>
         <nav className="scrollbar-thin flex-1 overflow-y-auto px-3 py-4">
-          {navGroups.map((group) => (
+          {visibleGroups.map((group) => (
             <div key={group.label} className="mb-5">
               <p className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 {group.label}

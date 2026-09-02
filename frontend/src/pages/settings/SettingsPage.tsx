@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/toast';
 import { extractErrorMessage } from '@/lib/auth-context';
 import { LiroCrmIntegrationCard } from './LiroCrmIntegrationCard';
 import { PersonalDataProviderCard } from './PersonalDataProviderCard';
+import { FeaturesSettingsCard } from './FeaturesSettingsCard';
 import type { Role } from '@/types';
 
 const ROLES: Role[] = ['ADMIN', 'GESTOR', 'VENDEDOR', 'FINANCEIRO', 'ATENDIMENTO', 'ANALISTA'];
@@ -18,6 +19,7 @@ export function SettingsPage() {
   const [tab, setTab] = useState('organizacao');
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'ADMIN';
+  const canManageFeatures = currentUser?.role === 'ADMIN' || currentUser?.role === 'GESTOR';
 
   const { data: org, isLoading: loadingOrg } = useOrganization();
   const updateOrg = useUpdateOrganization();
@@ -72,6 +74,7 @@ export function SettingsPage() {
         <TabsList>
           <TabsTrigger value="organizacao">Organização</TabsTrigger>
           <TabsTrigger value="usuarios">Usuários</TabsTrigger>
+          {canManageFeatures && <TabsTrigger value="ferramentas">Ferramentas</TabsTrigger>}
           <TabsTrigger value="integracoes">Integrações</TabsTrigger>
         </TabsList>
       </Tabs>
@@ -141,6 +144,8 @@ export function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      {tab === 'ferramentas' && canManageFeatures && <FeaturesSettingsCard />}
 
       {tab === 'integracoes' && (
         <div className="space-y-6">

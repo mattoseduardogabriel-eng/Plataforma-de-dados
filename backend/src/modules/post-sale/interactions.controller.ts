@@ -3,8 +3,10 @@ import { ApiTags } from '@nestjs/swagger';
 import { InteractionsService } from './interactions.service';
 import { CreateInteractionDto } from './dto/create-interaction.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('pós-venda')
+@RequireFeature('pos_venda')
 @Controller('post-sale/interactions')
 export class InteractionsController {
   constructor(private readonly interactionsService: InteractionsService) {}

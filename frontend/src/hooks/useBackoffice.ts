@@ -69,6 +69,15 @@ export interface UpdateSubscriptionPayload {
   trialEndsAt?: string;
 }
 
+export function useSetOrganizationFeatures() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, enabledFeatures }: { id: string; enabledFeatures: string[] }) =>
+      (await api.patch(`/backoffice/organizations/${id}/features`, { enabledFeatures })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backoffice', 'organizations'] }),
+  });
+}
+
 export function useUpdateOrganizationSubscription() {
   const qc = useQueryClient();
   return useMutation({

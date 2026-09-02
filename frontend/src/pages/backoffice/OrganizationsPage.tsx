@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { Plus, Users2, KanbanSquare, UserCog, ShieldOff, ShieldCheck, Check, X, CreditCard, Clock } from 'lucide-react';
+import { Plus, Users2, KanbanSquare, UserCog, ShieldOff, ShieldCheck, Check, X, CreditCard, Clock, Wrench } from 'lucide-react';
 import {
   useBackofficeOrganizations,
   useCreateBackofficeOrganization,
   useSetOrganizationStatus,
   useDecideOrganizationApproval,
   useUpdateOrganizationSubscription,
+  useSetOrganizationFeatures,
 } from '@/hooks/useBackoffice';
 import type { BackofficeOrganization, SubscriptionStatus } from '@/types';
+import { PLATFORM_FEATURES } from '@/lib/platform-features';
 import { Button, Card, Input, Label, Alert, Badge, Spinner, EmptyState, Select } from '@/components/ui/primitives';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@/components/ui/table';
 import { Dialog } from '@/components/ui/dialog';
@@ -265,11 +267,70 @@ function EditSubscriptionDialog({ org, onClose }: { org: BackofficeOrganization 
   );
 }
 
+function EditFeaturesDialog({ org, onClose }: { org: BackofficeOrganization | null; onClose: () => void }) {
+  const setFeatures = useSetOrganizationFeatures();
+  const [selected, setSelected] = useState<string[]>(org?.enabledFeatures ?? []);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!org) return null;
+
+  const toggle = (key: string) =>
+    setSelected((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await setFeatures.mutateAsync({ id: org.id, enabledFeatures: selected });
+      onClose();
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Não foi possível atualizar as ferramentas.'));
+    }
+  };
+
+  const groups = Array.from(new Set(PLATFORM_FEATURES.map((f) => f.group)));
+
+  return (
+    <Dialog open={!!org} onClose={onClose} title={`Ferramentas liberadas — ${org.name}`}>
+      <form onSubmit={onSubmit} className="space-y-4">
+        {error && <Alert tone="danger">{error}</Alert>}
+        <p className="text-xs text-slate-500">
+          Define o teto do que essa empresa pode usar. O dono da empresa ainda pode restringir mais por
+          setor/usuário, mas nunca liberar o que estiver desmarcado aqui.
+        </p>
+        {groups.map((group) => (
+          <div key={group}>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{group}</p>
+            <div className="space-y-1.5">
+              {PLATFORM_FEATURES.filter((f) => f.group === group).map((f) => (
+                <label key={f.key} className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(f.key)}
+                    onChange={() => toggle(f.key)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  {f.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button type="submit" loading={setFeatures.isPending}>Salvar</Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
 export function OrganizationsPage() {
   const { data: organizations, isLoading } = useBackofficeOrganizations();
   const setStatus = useSetOrganizationStatus();
   const [createOpen, setCreateOpen] = useState(false);
   const [editingSubscription, setEditingSubscription] = useState<BackofficeOrganization | null>(null);
+  const [editingFeatures, setEditingFeatures] = useState<BackofficeOrganization | null>(null);
 
   const pending = organizations?.filter((o) => o.approvalStatus === 'PENDING') ?? [];
   const decided = organizations?.filter((o) => o.approvalStatus !== 'PENDING') ?? [];
@@ -365,6 +426,9 @@ export function OrganizationsPage() {
                     <Td className="text-slate-500">{new Date(org.createdAt).toLocaleDateString('pt-BR')}</Td>
                     <Td>
                       <div className="flex flex-wrap items-center gap-1.5">
+                        <Button size="sm" variant="outline" onClick={() => setEditingFeatures(org)}>
+                          <Wrench className="h-3.5 w-3.5" /> Ferramentas
+                        </Button>
                         <Button size="sm" variant="outline" onClick={() => setEditingSubscription(org)}>
                           <CreditCard className="h-3.5 w-3.5" /> Assinatura
                         </Button>
@@ -392,6 +456,7 @@ export function OrganizationsPage() {
 
       <CreateOrganizationDialog open={createOpen} onClose={() => setCreateOpen(false)} />
       <EditSubscriptionDialog org={editingSubscription} onClose={() => setEditingSubscription(null)} />
+      <EditFeaturesDialog key={editingFeatures?.id ?? 'none'} org={editingFeatures} onClose={() => setEditingFeatures(null)} />
     </div>
   );
 }

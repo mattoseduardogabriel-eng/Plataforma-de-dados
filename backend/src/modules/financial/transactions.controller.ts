@@ -4,8 +4,10 @@ import { TransactionsService } from './transactions.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('financeiro')
+@RequireFeature('financeiro')
 @Controller('financial/transactions')
 export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}

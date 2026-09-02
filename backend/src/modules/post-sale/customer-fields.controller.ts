@@ -5,8 +5,10 @@ import { CustomerFieldsService } from './customer-fields.service';
 import { CreateCustomerFieldDefinitionDto } from './dto/customer-field-definition.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('pós-venda')
+@RequireFeature('pos_venda')
 @Controller('post-sale/customer-fields')
 export class CustomerFieldsController {
   constructor(private readonly service: CustomerFieldsService) {}

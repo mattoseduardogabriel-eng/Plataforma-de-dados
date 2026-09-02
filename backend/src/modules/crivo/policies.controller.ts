@@ -6,8 +6,10 @@ import { CreatePolicyDto } from './dto/create-policy.dto';
 import { UpdatePolicyDto } from './dto/update-policy.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('crivo')
+@RequireFeature('crivo')
 @Controller('crivo/policies')
 export class PoliciesController {
   constructor(private readonly policiesService: PoliciesService) {}

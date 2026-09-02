@@ -6,12 +6,14 @@ import { DataIntelligenceService } from './data-intelligence.service';
 import { QueryDocumentDto } from './dto/query-document.dto';
 import { QueryPhoneDto } from './dto/query-phone.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('inteligência de dados')
 @Controller('data-intelligence')
 export class DataIntelligenceController {
   constructor(private readonly dataIntelligenceService: DataIntelligenceService) {}
 
+  @RequireFeature('consulta_cnpj')
   @Post('cnpj/query')
   queryCnpj(@CurrentUser() user: AuthenticatedUser, @Body() dto: QueryDocumentDto, @Req() req: Request) {
     return this.dataIntelligenceService.queryCnpj({
@@ -23,6 +25,7 @@ export class DataIntelligenceController {
     });
   }
 
+  @RequireFeature('consulta_cpf')
   @Post('cpf/query')
   queryCpf(@CurrentUser() user: AuthenticatedUser, @Body() dto: QueryDocumentDto, @Req() req: Request) {
     return this.dataIntelligenceService.queryCpf({
@@ -34,6 +37,7 @@ export class DataIntelligenceController {
     });
   }
 
+  @RequireFeature('consulta_telefone')
   @Post('phone/query')
   queryPhone(@CurrentUser() user: AuthenticatedUser, @Body() dto: QueryPhoneDto, @Req() req: Request) {
     return this.dataIntelligenceService.queryPhone({
@@ -45,6 +49,7 @@ export class DataIntelligenceController {
     });
   }
 
+  @RequireFeature('consulta_credito')
   @Post('credit-score/query')
   queryCreditScore(
     @CurrentUser() user: AuthenticatedUser,
@@ -60,6 +65,7 @@ export class DataIntelligenceController {
     });
   }
 
+  @RequireFeature('consulta_parentes')
   @Post('relatives/query')
   queryRelatives(
     @CurrentUser() user: AuthenticatedUser,

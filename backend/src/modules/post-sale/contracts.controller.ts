@@ -3,8 +3,10 @@ import { ApiTags } from '@nestjs/swagger';
 import { ContractsService } from './contracts.service';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('pós-venda')
+@RequireFeature('pos_venda')
 @Controller('post-sale/contracts')
 export class ContractsController {
   constructor(private readonly contractsService: ContractsService) {}
