@@ -41,6 +41,13 @@ export function useUpdateOrganization() {
   });
 }
 
+export function useUpdateDashboardWidgets() {
+  return useMutation({
+    mutationFn: async (hiddenDashboardWidgets: string[]) =>
+      (await api.patch('/users/me/dashboard-widgets', { hiddenDashboardWidgets })).data,
+  });
+}
+
 export function useConfirmSubscription() {
   const qc = useQueryClient();
   return useMutation({

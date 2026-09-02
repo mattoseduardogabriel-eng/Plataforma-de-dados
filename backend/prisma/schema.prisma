@@ -51,6 +51,10 @@ model Organization {
   // gateway de pagamento integrado), mas registra o aceite formal.
   subscriptionConfirmedAt DateTime?
 
+  // Meta de faturamento do mês, definida pelo ADMIN — usada no widget
+  // "Meta x Produção" do dashboard. Null = widget não aparece.
+  monthlyGoalCents Int?
+
   // Teto de ferramentas que o dono da plataforma liberou pra essa empresa
   // (ver backend/src/common/features/platform-features.ts). Chaves fora
   // dessa lista ficam bloqueadas pra todo mundo da empresa, mesmo que o
@@ -170,6 +174,9 @@ model User {
   // real do Liro não tem esse conceito confirmado; guardado pra uso futuro
   // caso a integração evolua pra atribuir conversas por operador).
   liroOperatorId   String?
+  // Preferência pessoal — quais widgets do dashboard este usuário escondeu.
+  // Ver frontend/src/lib/dashboard-widgets.ts pra chaves válidas.
+  hiddenDashboardWidgets String[] @default([])
 
   auditLogs           AuditLog[]
   leadsCreated        Lead[]        @relation("LeadCreatedBy")

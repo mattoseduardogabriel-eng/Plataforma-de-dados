@@ -257,6 +257,7 @@ export class AuthService {
         organizationId: true,
         active: true,
         createdAt: true,
+        hiddenDashboardWidgets: true,
         organization: { select: { id: true, name: true, cnpj: true } },
       },
     });

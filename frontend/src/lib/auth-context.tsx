@@ -24,6 +24,7 @@ interface AuthContextValue {
   // da plataforma. Retorna a mensagem pra exibir na tela de cadastro.
   registerOrganization: (payload: RegisterOrganizationPayload) => Promise<{ message: string }>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -85,8 +86,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, organization, loading, login, registerOrganization, logout }),
-    [user, organization, loading, login, registerOrganization, logout],
+    () => ({ user, organization, loading, login, registerOrganization, logout, refreshUser: loadMe }),
+    [user, organization, loading, login, registerOrganization, logout, loadMe],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

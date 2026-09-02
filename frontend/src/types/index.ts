@@ -13,6 +13,7 @@ export interface User {
   // Vínculo best-effort com o operador correspondente no Liro CRM — a API
   // real do Liro não confirma esse conceito, é só um campo pra uso futuro.
   liroOperatorId?: string | null;
+  hiddenDashboardWidgets?: string[];
 }
 
 export interface Organization {
@@ -28,6 +29,7 @@ export interface Organization {
   nextBillingAt?: string | null;
   trialEndsAt?: string | null;
   subscriptionConfirmedAt?: string | null;
+  monthlyGoalCents?: number | null;
 }
 
 // ── Backoffice (dono da plataforma) ────────────────────────────────────

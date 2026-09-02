@@ -4,6 +4,7 @@ import { Role } from '@prisma/client';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateDashboardWidgetsDto } from './dto/update-dashboard-widgets.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 
@@ -11,6 +12,12 @@ import { Roles } from '../../common/decorators/roles.decorator';
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  /** Preferência pessoal — qualquer usuário pode esconder/mostrar widgets do próprio dashboard. */
+  @Patch('me/dashboard-widgets')
+  updateOwnDashboardWidgets(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateDashboardWidgetsDto) {
+    return this.usersService.updateDashboardWidgets(user.id, dto.hiddenDashboardWidgets);
+  }
 
   @Roles(Role.ADMIN)
   @Post()

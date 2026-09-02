@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { UpdateOrganizationDto } from './dto/update-organization.dto';
 
 @Injectable()
 export class OrganizationsService {
@@ -17,7 +18,7 @@ export class OrganizationsService {
     return organization;
   }
 
-  async update(id: string, data: { name?: string; cnpj?: string }) {
+  async update(id: string, data: UpdateOrganizationDto) {
     await this.findOne(id);
     return this.prisma.organization.update({ where: { id }, data });
   }

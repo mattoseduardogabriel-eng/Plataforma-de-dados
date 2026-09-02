@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 export class UpdateOrganizationDto {
   @ApiPropertyOptional()
@@ -11,4 +11,10 @@ export class UpdateOrganizationDto {
   @IsOptional()
   @IsString()
   cnpj?: string;
+
+  @ApiPropertyOptional({ description: 'Meta de faturamento do mês, em centavos — usada no widget "Meta x Produção" do dashboard.' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlyGoalCents?: number;
 }

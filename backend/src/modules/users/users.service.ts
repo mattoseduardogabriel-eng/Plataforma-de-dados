@@ -67,6 +67,14 @@ export class UsersService {
     });
   }
 
+  async updateDashboardWidgets(userId: string, hiddenDashboardWidgets: string[]) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { hiddenDashboardWidgets },
+      select: { id: true, hiddenDashboardWidgets: true },
+    });
+  }
+
   async remove(organizationId: string, id: string) {
     await this.findOne(organizationId, id);
     await this.prisma.user.update({ where: { id }, data: { active: false } });

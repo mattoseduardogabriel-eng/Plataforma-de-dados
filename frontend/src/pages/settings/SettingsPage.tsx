@@ -25,11 +25,17 @@ export function SettingsPage() {
 
   const { data: org, isLoading: loadingOrg } = useOrganization();
   const updateOrg = useUpdateOrganization();
-  const [orgForm, setOrgForm] = useState({ name: '', cnpj: '' });
+  const [orgForm, setOrgForm] = useState({ name: '', cnpj: '', monthlyGoalReais: '' });
   const { toast } = useToast();
 
   useEffect(() => {
-    if (org) setOrgForm({ name: org.name ?? '', cnpj: org.cnpj ?? '' });
+    if (org) {
+      setOrgForm({
+        name: org.name ?? '',
+        cnpj: org.cnpj ?? '',
+        monthlyGoalReais: org.monthlyGoalCents != null ? String(org.monthlyGoalCents / 100) : '',
+      });
+    }
   }, [org]);
 
   const { data: users, isLoading: loadingUsers } = useOrgUsers();
@@ -65,7 +71,11 @@ export function SettingsPage() {
   const onSaveOrg = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await updateOrg.mutateAsync(orgForm);
+      await updateOrg.mutateAsync({
+        name: orgForm.name,
+        cnpj: orgForm.cnpj,
+        monthlyGoalCents: orgForm.monthlyGoalReais ? Math.round(Number(orgForm.monthlyGoalReais) * 100) : undefined,
+      });
       toast({ tone: 'success', title: 'Organização atualizada' });
     } catch (err) {
       toast({ tone: 'error', title: 'Erro ao salvar', description: extractErrorMessage(err) });
@@ -121,6 +131,19 @@ export function SettingsPage() {
                   <div>
                     <Label>CNPJ</Label>
                     <Input disabled={!isAdmin} value={orgForm.cnpj} onChange={(e) => setOrgForm((f) => ({ ...f, cnpj: e.target.value }))} />
+                  </div>
+                  <div>
+                    <Label>Meta de faturamento do mês (R$)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      disabled={!isAdmin}
+                      value={orgForm.monthlyGoalReais}
+                      onChange={(e) => setOrgForm((f) => ({ ...f, monthlyGoalReais: e.target.value }))}
+                      placeholder="Ex.: 50000.00"
+                    />
+                    <p className="mt-1 text-xs text-slate-400">Usada no widget "Meta x Produção" do dashboard.</p>
                   </div>
                   {isAdmin && (
                     <Button type="submit" loading={updateOrg.isPending}>Salvar</Button>
