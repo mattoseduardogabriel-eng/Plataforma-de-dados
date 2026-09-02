@@ -2,9 +2,9 @@ import type { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { Spinner } from '@/components/ui/primitives';
-import { AppShell } from './AppShell';
+import { BackofficeShell } from './BackofficeShell';
 
-export function ProtectedRoute({ children }: { children: ReactNode }) {
+export function BackofficeRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -19,11 +19,11 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     return <Navigate to="/login" replace />;
   }
 
-  // O dono da plataforma (SUPER_ADMIN) não é usuário de nenhuma empresa
-  // cliente — não faz sentido ele acessar CRM/Financeiro/Pós-venda.
-  if (user.role === 'SUPER_ADMIN') {
-    return <Navigate to="/backoffice" replace />;
+  // Só o dono da plataforma acessa o backoffice — qualquer usuário de
+  // empresa cliente é mandado de volta pro dashboard dela.
+  if (user.role !== 'SUPER_ADMIN') {
+    return <Navigate to="/" replace />;
   }
 
-  return <AppShell>{children}</AppShell>;
+  return <BackofficeShell>{children}</BackofficeShell>;
 }

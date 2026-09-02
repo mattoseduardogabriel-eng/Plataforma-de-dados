@@ -1,4 +1,4 @@
-export type Role = 'ADMIN' | 'GESTOR' | 'VENDEDOR' | 'FINANCEIRO' | 'ATENDIMENTO' | 'ANALISTA';
+export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'GESTOR' | 'VENDEDOR' | 'FINANCEIRO' | 'ATENDIMENTO' | 'ANALISTA';
 
 export interface User {
   id: string;
@@ -14,6 +14,20 @@ export interface Organization {
   id: string;
   name: string;
   cnpj?: string | null;
+  active?: boolean;
+  isPlatform?: boolean;
+  createdAt?: string;
+}
+
+// ── Backoffice (dono da plataforma) ────────────────────────────────────
+export interface BackofficeOrganization extends Organization {
+  active: boolean;
+  createdAt: string;
+  counts: { users: number; leads: number; customers: number; deals: number };
+}
+
+export interface BackofficeOrganizationDetail extends BackofficeOrganization {
+  users: { id: string; name: string; email: string; role: Role; active: boolean; createdAt: string }[];
 }
 
 // ── CRM ─────────────────────────────────────────────────────────────────

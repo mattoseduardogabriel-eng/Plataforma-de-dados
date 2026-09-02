@@ -1,6 +1,8 @@
 import { Routes, Route } from 'react-router-dom';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
+import { BackofficeRoute } from '@/components/layout/BackofficeRoute';
 import { LoginPage } from '@/pages/LoginPage';
+import { OrganizationsPage as BackofficeOrganizationsPage } from '@/pages/backoffice/OrganizationsPage';
 import { RegisterOrganizationPage } from '@/pages/RegisterOrganizationPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { PipelinePage } from '@/pages/crm/PipelinePage';
@@ -32,6 +34,8 @@ export default function App() {
       <Route path="/registrar" element={<RegisterOrganizationPage />} />
 
       <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+
+      <Route path="/backoffice" element={<BackofficeRoute><BackofficeOrganizationsPage /></BackofficeRoute>} />
 
       <Route path="/crm/funil" element={<ProtectedRoute><PipelinePage /></ProtectedRoute>} />
       <Route path="/crm/leads" element={<ProtectedRoute><LeadsPage /></ProtectedRoute>} />

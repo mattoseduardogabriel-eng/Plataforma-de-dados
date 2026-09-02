@@ -114,9 +114,15 @@ export class AuthService {
   }
 
   async validateCredentials(email: string, password: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      include: { organization: { select: { active: true } } },
+    });
     if (!user || !user.active) {
       throw new UnauthorizedException('Credenciais inválidas.');
+    }
+    if (!user.organization.active) {
+      throw new UnauthorizedException('Esta empresa está suspensa. Entre em contato com o suporte.');
     }
     const passwordMatches = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatches) {

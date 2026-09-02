@@ -5,6 +5,46 @@ const prisma = new PrismaClient();
 const DEMO_ORG_NAME = 'Franquia Demo Telecom';
 const DEMO_PASSWORD = 'Demo@123456';
 
+// Organização técnica que hospeda a conta do dono da plataforma (SUPER_ADMIN).
+// Não é uma empresa cliente — nunca aparece no backoffice como "empresa".
+const PLATFORM_ORG_NAME = 'Aster — Plataforma';
+const SUPER_ADMIN_NAME = 'Administrador da Plataforma';
+const SUPER_ADMIN_EMAIL = 'fgrd1200@gmail.com';
+const SUPER_ADMIN_PASSWORD = 'TrocarSenha@2026';
+
+/**
+ * Garante que existe uma conta SUPER_ADMIN (dono da plataforma), sem apagar
+ * nada — ao contrário do org de demo, esta nunca é recriada do zero, porque
+ * pode já existir em produção com outra senha (trocada pelo próprio dono).
+ */
+async function ensureSuperAdmin() {
+  let platformOrg = await prisma.organization.findFirst({ where: { isPlatform: true } });
+  if (!platformOrg) {
+    platformOrg = await prisma.organization.create({
+      data: { name: PLATFORM_ORG_NAME, isPlatform: true },
+    });
+  }
+
+  const existingSuperAdmin = await prisma.user.findUnique({ where: { email: SUPER_ADMIN_EMAIL } });
+  if (existingSuperAdmin) {
+    console.log(`✅ Conta SUPER_ADMIN já existe (${SUPER_ADMIN_EMAIL}) — senha mantida como está.`);
+    return;
+  }
+
+  await prisma.user.create({
+    data: {
+      organizationId: platformOrg.id,
+      name: SUPER_ADMIN_NAME,
+      email: SUPER_ADMIN_EMAIL,
+      passwordHash: await hash(SUPER_ADMIN_PASSWORD),
+      role: Role.SUPER_ADMIN,
+    },
+  });
+  console.log('🔑 Conta SUPER_ADMIN criada:');
+  console.log(`   e-mail: ${SUPER_ADMIN_EMAIL}`);
+  console.log(`   senha:  ${SUPER_ADMIN_PASSWORD}  (troque no primeiro acesso!)`);
+}
+
 async function hash(password: string) {
   return bcrypt.hash(password, 10);
 }
@@ -23,6 +63,8 @@ function monthsAgo(months: number, day = 5) {
 
 async function main() {
   console.log('🌱 Iniciando seed de demonstração...');
+
+  await ensureSuperAdmin();
 
   const existing = await prisma.organization.findFirst({ where: { name: DEMO_ORG_NAME } });
   if (existing) {

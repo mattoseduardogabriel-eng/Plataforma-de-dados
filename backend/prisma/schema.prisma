@@ -15,11 +15,18 @@ datasource db {
 // ────────────────────────────────────────────────────────────────────────
 
 model Organization {
-  id        String   @id @default(uuid())
-  name      String
-  cnpj      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(uuid())
+  name       String
+  cnpj       String?
+  // Organização técnica que hospeda as contas SUPER_ADMIN (donos da plataforma
+  // Aster) — nunca aparece na lista de empresas clientes do backoffice, e não
+  // guarda dados de negócio (CRM/financeiro/pós-venda) de verdade.
+  isPlatform Boolean  @default(false)
+  // Empresa suspensa não consegue logar (ver AuthService.validateCredentials).
+  // Controlado pelo backoffice do dono da plataforma.
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   // Integração com o Liro CRM (API externa, chave por organização — ver
   // docs/INTEGRACAO-LIRO-CRM.md). A chave é guardada cifrada (AES-256-GCM,
@@ -83,6 +90,10 @@ model CustomerFieldDefinition {
 }
 
 enum Role {
+  // Dono da plataforma Aster — não pertence a nenhuma empresa cliente,
+  // gerencia o backoffice (criar/suspender organizações). Nunca acessa
+  // CRM/Financeiro/Pós-venda de nenhum cliente.
+  SUPER_ADMIN
   ADMIN
   GESTOR
   VENDEDOR
