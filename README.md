@@ -24,7 +24,7 @@ cadastrais antes de fechar negócio.
 | **Inteligência de Dados** | Consulta de **CNPJ** (dado público oficial, Receita Federal via BrasilAPI), **CPF**, **telefone**, **score de crédito** e **vínculos/parentesco** (conectores plugáveis — ver [`docs/LGPD-E-FONTES-DE-DADOS.md`](docs/LGPD-E-FONTES-DE-DADOS.md)). Toda consulta de dado pessoal exige finalidade declarada e é auditada. |
 | **Crivo** | Motor de decisão de crédito: combina situação cadastral, score e pendências contra políticas configuráveis para aprovar, reprovar ou enviar à análise manual, com limite de crédito sugerido. |
 | **Cruzamento de Dados** | Relatórios que combinam dados internos (CRM/financeiro/pós-venda) com os conectores externos em um dossiê único, exportável em CSV. |
-| **Integração com o Liro CRM** | Sincroniza contatos do Liro CRM como leads e devolve decisões do Crivo/consultas de dados como tags no contato — ver [`docs/INTEGRACAO-LIRO-CRM.md`](docs/INTEGRACAO-LIRO-CRM.md). |
+| **Integração com o Liro CRM** | Sincroniza contatos do Liro CRM como leads/negócios, mantém o Funil de Vendas em sincronia com o Kanban do Liro nos dois sentidos (tempo real) e devolve decisões do Crivo/consultas de dados como tags no contato — ver [`docs/INTEGRACAO-LIRO-CRM.md`](docs/INTEGRACAO-LIRO-CRM.md). |
 | **Auditoria (LGPD)** | Log de toda ação sensível — quem, o quê, quando e com qual finalidade — essencial para operar legalmente com dados pessoais. |
 
 ## Arquitetura
