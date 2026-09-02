@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, Card, Input, Label, Select, Spinner, Badge } from '@/components/ui/primitives';
 import { Dialog } from '@/components/ui/dialog';
@@ -13,7 +13,7 @@ import type { Deal } from '@/types';
 export function PipelinePage() {
   const { data: pipelines, isLoading: loadingPipelines } = usePipelines();
   const pipeline = pipelines?.[0];
-  const { data: deals, isLoading: loadingDeals } = useDeals({ pipelineId: pipeline?.id, status: 'ABERTO' });
+  const { data: deals, isLoading: loadingDeals, isFetching: fetchingDeals, refetch: refetchDeals } = useDeals({ pipelineId: pipeline?.id, status: 'ABERTO' });
   const moveDeal = useMoveDeal();
   const createDeal = useCreateDeal();
   const createStage = useCreatePipelineStage();
@@ -103,7 +103,15 @@ export function PipelinePage() {
 
   return (
     <div>
-      <PageHeader title="Funil de Vendas" description="Arraste os cards entre as etapas para atualizar o status" />
+      <PageHeader
+        title="Funil de Vendas"
+        description="Arraste os cards entre as etapas para atualizar o status"
+        actions={
+          <Button size="sm" variant="outline" onClick={() => refetchDeals()} loading={fetchingDeals}>
+            <RefreshCw className="h-4 w-4" /> Atualizar
+          </Button>
+        }
+      />
       <div className="flex gap-4 overflow-x-auto pb-4">
         {pipeline?.stages.map((stage) => (
           <div
