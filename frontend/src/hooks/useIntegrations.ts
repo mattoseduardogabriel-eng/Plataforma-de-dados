@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { LiroCrmStatus, LiroCrmSyncResult, PersonalDataProviderStatus, SavePersonalDataProviderPayload } from '@/types';
+import type {
+  LiroCrmStatus,
+  LiroCrmSyncResult,
+  LiroKanbanStage,
+  PersonalDataProviderStatus,
+  SavePersonalDataProviderPayload,
+} from '@/types';
 
 export function useLiroCrmStatus() {
   return useQuery({
@@ -47,6 +53,39 @@ export function usePushLiroCrmTag() {
   return useMutation({
     mutationFn: async ({ leadId, tagName }: { leadId: string; tagName: string }) =>
       (await api.post<{ success: boolean }>(`/integrations/liro-crm/leads/${leadId}/tags`, { tagName })).data,
+  });
+}
+
+// Etapas do Kanban do Liro CRM, pra montar a tela de mapeamento de funil
+// (qual etapa de lá corresponde a qual etapa do Aster). Só faz sentido
+// chamar com a integração já conectada — ver LiroCrmIntegrationCard.
+export function useLiroCrmKanbanStages(enabled: boolean) {
+  return useQuery({
+    queryKey: ['integrations', 'liro-crm', 'kanban-stages'],
+    queryFn: async () => (await api.get<LiroKanbanStage[]>('/integrations/liro-crm/kanban-stages')).data,
+    enabled,
+  });
+}
+
+export function useSetLiroCrmStageMapping() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      pipelineStageId,
+      liroKanbanStageId,
+      liroKanbanStageName,
+    }: {
+      pipelineStageId: string;
+      liroKanbanStageId: string | null;
+      liroKanbanStageName: string | null;
+    }) =>
+      (
+        await api.put(`/integrations/liro-crm/pipeline-stages/${pipelineStageId}/mapping`, {
+          liroKanbanStageId,
+          liroKanbanStageName,
+        })
+      ).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm', 'pipelines'] }),
   });
 }
 
