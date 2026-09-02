@@ -17,6 +17,7 @@ import {
   ListChecks,
   ScrollText,
   Settings,
+  CheckSquare,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -37,7 +38,10 @@ export interface NavGroup {
 export const navGroups: NavGroup[] = [
   {
     label: 'Visão Geral',
-    items: [{ label: 'Dashboard', to: '/', icon: LayoutDashboard }],
+    items: [
+      { label: 'Dashboard', to: '/', icon: LayoutDashboard },
+      { label: 'Tarefas', to: '/tarefas', icon: CheckSquare, featureKey: 'crm' },
+    ],
   },
   {
     label: 'CRM de Vendas',

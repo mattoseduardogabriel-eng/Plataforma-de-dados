@@ -1,14 +1,17 @@
 import { useState } from 'react';
+import { UserPlus } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { Card, Select, Spinner, Badge, EmptyState } from '@/components/ui/primitives';
+import { Card, Select, Spinner, Badge, EmptyState, Button } from '@/components/ui/primitives';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@/components/ui/table';
 import { useDataQueryHistory } from '@/hooks/useDataIntelligence';
 import { formatDateTime, formatDocument } from '@/lib/utils';
-import type { DataQueryType } from '@/types';
+import type { DataQueryHistoryItem, DataQueryType } from '@/types';
+import { RegisterCustomerFromQueryDialog } from './RegisterCustomerFromQueryDialog';
 
 export function HistoryPage() {
   const [type, setType] = useState<DataQueryType | ''>('');
   const { data, isLoading } = useDataQueryHistory({ type: type || undefined });
+  const [registeringFrom, setRegisteringFrom] = useState<DataQueryHistoryItem | null>(null);
 
   return (
     <div>
@@ -39,6 +42,7 @@ export function HistoryPage() {
               <Th>Provedor</Th>
               <Th>Solicitado por</Th>
               <Th>Quando</Th>
+              <Th />
             </Tr>
           </Thead>
           <Tbody>
@@ -52,11 +56,24 @@ export function HistoryPage() {
                 </Td>
                 <Td>{item.requestedBy?.name}</Td>
                 <Td>{formatDateTime(item.createdAt)}</Td>
+                <Td>
+                  {(item.type === 'CNPJ' || item.type === 'CPF') && (
+                    <Button size="sm" variant="outline" onClick={() => setRegisteringFrom(item)}>
+                      <UserPlus className="h-3.5 w-3.5" /> Cadastrar cliente
+                    </Button>
+                  )}
+                </Td>
               </Tr>
             ))}
           </Tbody>
         </Table>
       )}
+
+      <RegisterCustomerFromQueryDialog
+        key={registeringFrom?.id ?? 'none'}
+        item={registeringFrom}
+        onClose={() => setRegisteringFrom(null)}
+      />
     </div>
   );
 }

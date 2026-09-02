@@ -10,6 +10,7 @@ import { LeadsPage } from '@/pages/crm/LeadsPage';
 import { LeadDetailPage } from '@/pages/crm/LeadDetailPage';
 import { DealDetailPage } from '@/pages/crm/DealDetailPage';
 import { TeamPage } from '@/pages/crm/TeamPage';
+import { TasksPage } from '@/pages/crm/TasksPage';
 import { CashFlowPage } from '@/pages/financial/CashFlowPage';
 import { TransactionsPage } from '@/pages/financial/TransactionsPage';
 import { CustomersPage } from '@/pages/post-sale/CustomersPage';
@@ -42,6 +43,7 @@ export default function App() {
       <Route path="/crm/leads/:id" element={<ProtectedRoute><LeadDetailPage /></ProtectedRoute>} />
       <Route path="/crm/deals/:id" element={<ProtectedRoute><DealDetailPage /></ProtectedRoute>} />
       <Route path="/crm/equipe" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
+      <Route path="/tarefas" element={<ProtectedRoute><TasksPage /></ProtectedRoute>} />
 
       <Route path="/financeiro" element={<ProtectedRoute><CashFlowPage /></ProtectedRoute>} />
       <Route path="/financeiro/lancamentos" element={<ProtectedRoute><TransactionsPage /></ProtectedRoute>} />

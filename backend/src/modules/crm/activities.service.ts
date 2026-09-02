@@ -1,6 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateActivityDto } from './dto/create-activity.dto';
+
+const ACTIVITY_INCLUDE = {
+  assignedTo: { select: { id: true, name: true } },
+  lead: { select: { id: true, name: true } },
+  deal: { select: { id: true, title: true } },
+} satisfies Prisma.ActivityInclude;
 
 @Injectable()
 export class ActivitiesService {
@@ -19,7 +26,7 @@ export class ActivitiesService {
         assignedToId: dto.assignedToId ?? createdById,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
       },
-      include: { assignedTo: { select: { id: true, name: true } } },
+      include: ACTIVITY_INCLUDE,
     });
   }
 
@@ -31,8 +38,9 @@ export class ActivitiesService {
         leadId: filters.leadId,
         assignedToId: filters.assignedToId,
       },
-      include: { assignedTo: { select: { id: true, name: true } } },
-      orderBy: { createdAt: 'desc' },
+      include: ACTIVITY_INCLUDE,
+      // Pendentes primeiro (doneAt null), ordenadas por prazo; concluídas por último.
+      orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { dueDate: 'asc' }, { createdAt: 'desc' }],
     });
   }
 

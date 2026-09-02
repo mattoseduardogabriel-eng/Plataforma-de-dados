@@ -46,11 +46,11 @@ export class DealsController {
 
   @Patch(':id/move')
   move(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: MoveDealDto) {
-    return this.dealsService.move(user.organizationId, id, dto.stageId);
+    return this.dealsService.move(user.organizationId, id, dto.stageId, user.id);
   }
 
   @Patch(':id/close')
   close(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: CloseDealDto) {
-    return this.dealsService.close(user.organizationId, id, dto);
+    return this.dealsService.close(user.organizationId, id, dto, user.id);
   }
 }

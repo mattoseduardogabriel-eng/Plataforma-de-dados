@@ -128,6 +128,14 @@ export function useActivities(params: { dealId?: string; leadId?: string } = {})
   });
 }
 
+/** Lista de tarefas/atividades sem exigir um lead/negócio — usada na tela "Tarefas". */
+export function useTasks(params: { assignedToId?: string } = {}) {
+  return useQuery({
+    queryKey: ['crm', 'activities', 'tasks', params],
+    queryFn: async () => (await api.get<Activity[]>('/crm/activities', { params })).data,
+  });
+}
+
 export function useCreateActivity() {
   const qc = useQueryClient();
   return useMutation({

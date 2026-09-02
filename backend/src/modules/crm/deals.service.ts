@@ -73,7 +73,7 @@ export class DealsService {
     });
   }
 
-  async move(organizationId: string, id: string, stageId: string) {
+  async move(organizationId: string, id: string, stageId: string, userId: string) {
     const deal = await this.findOne(organizationId, id);
     const stage = await this.prisma.pipelineStage.findFirst({
       where: { id: stageId, pipeline: { organizationId } },
@@ -89,7 +89,7 @@ export class DealsService {
     });
 
     if (stage.isWon && deal.status !== 'GANHO') {
-      await this.markWon(organizationId, updated);
+      await this.markWon(organizationId, updated, userId);
     } else if (stage.isLost && deal.status !== 'PERDIDO') {
       await this.prisma.deal.update({
         where: { id },
@@ -100,7 +100,7 @@ export class DealsService {
     return this.findOne(organizationId, id);
   }
 
-  async close(organizationId: string, id: string, dto: CloseDealDto) {
+  async close(organizationId: string, id: string, dto: CloseDealDto, userId: string) {
     const deal = await this.findOne(organizationId, id);
     const stage = await this.prisma.pipelineStage.findFirst({
       where: { pipelineId: deal.pipelineId, isWon: dto.outcome === 'GANHO', isLost: dto.outcome === 'PERDIDO' },
@@ -118,7 +118,7 @@ export class DealsService {
     });
 
     if (dto.outcome === 'GANHO') {
-      await this.markWon(organizationId, updated);
+      await this.markWon(organizationId, updated, userId);
     }
 
     return this.findOne(organizationId, id);
@@ -126,10 +126,15 @@ export class DealsService {
 
   /**
    * Converte uma negociação ganha em cliente ativo no módulo de pós-venda,
-   * evitando duplicidade — este é o ponto de cruzamento entre CRM e
-   * Pós-venda: a venda fechada já nasce com carteira de cliente e contrato.
+   * evitando duplicidade — este é o ponto de cruzamento entre CRM,
+   * Pós-venda e Financeiro: a venda fechada já nasce com carteira de
+   * cliente, contrato e o lançamento de receita correspondente.
    */
-  private async markWon(organizationId: string, deal: { id: string; title: string; value: any; productPlan: string | null; leadId: string | null }) {
+  private async markWon(
+    organizationId: string,
+    deal: { id: string; title: string; value: any; productPlan: string | null; leadId: string | null },
+    userId: string,
+  ) {
     await this.prisma.deal.update({
       where: { id: deal.id },
       data: { status: 'GANHO', closedAt: new Date() },
@@ -169,6 +174,25 @@ export class DealsService {
           value: deal.value,
           startDate: new Date(),
           status: 'ATIVO',
+        },
+      });
+    }
+
+    // Registra o valor da venda como receita no Financeiro — evita ter que
+    // lançar manualmente todo negócio fechado. Só cria se houver valor
+    // (negócio sem valor definido não gera lançamento vazio).
+    const amount = Number(deal.value);
+    if (amount > 0) {
+      await this.prisma.transaction.create({
+        data: {
+          organizationId,
+          type: 'RECEITA',
+          description: `Venda fechada: ${deal.title}`,
+          amount: deal.value,
+          dueDate: new Date(),
+          status: 'PENDENTE',
+          customerId: customer.id,
+          createdById: userId,
         },
       });
     }

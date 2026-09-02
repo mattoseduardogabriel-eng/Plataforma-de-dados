@@ -107,6 +107,8 @@ export interface Activity {
   dueDate?: string | null;
   doneAt?: string | null;
   assignedTo?: { id: string; name: string } | null;
+  lead?: { id: string; name: string } | null;
+  deal?: { id: string; title: string } | null;
   createdAt: string;
 }
 
