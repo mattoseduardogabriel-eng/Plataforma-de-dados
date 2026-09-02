@@ -24,7 +24,7 @@ export function PipelinePage() {
   const isManager = currentUser?.role === 'ADMIN' || currentUser?.role === 'GESTOR';
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState({ title: '', value: '', productPlan: '', stageId: '' });
+  const [form, setForm] = useState({ title: '', value: '', productPlan: '', stageId: '', contactName: '', contactPhone: '', contactDocument: '' });
   const [dragDealId, setDragDealId] = useState<string | null>(null);
   const [novaEtapaAberta, setNovaEtapaAberta] = useState(false);
   const [novaEtapaNome, setNovaEtapaNome] = useState('');
@@ -39,7 +39,7 @@ export function PipelinePage() {
   }, [deals]);
 
   const openDialog = (stageId: string) => {
-    setForm({ title: '', value: '', productPlan: '', stageId });
+    setForm({ title: '', value: '', productPlan: '', stageId, contactName: '', contactPhone: '', contactDocument: '' });
     setDialogOpen(true);
   };
 
@@ -53,6 +53,9 @@ export function PipelinePage() {
         productPlan: form.productPlan || undefined,
         pipelineId: pipeline.id,
         stageId: form.stageId,
+        contactName: form.contactName || undefined,
+        contactPhone: form.contactPhone || undefined,
+        contactDocument: form.contactDocument || undefined,
       });
       toast({ tone: 'success', title: 'Negociação criada' });
       setDialogOpen(false);
@@ -205,6 +208,28 @@ export function PipelinePage() {
           <div>
             <Label>Título</Label>
             <Input required value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Nome do contato</Label>
+              <Input
+                placeholder="Fulano da Silva"
+                value={form.contactName}
+                onChange={(e) => setForm((f) => ({ ...f, contactName: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label>Telefone</Label>
+              <Input
+                placeholder="5511999998888"
+                value={form.contactPhone}
+                onChange={(e) => setForm((f) => ({ ...f, contactPhone: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div>
+            <Label>CPF ou CNPJ</Label>
+            <Input value={form.contactDocument} onChange={(e) => setForm((f) => ({ ...f, contactDocument: e.target.value }))} />
           </div>
           <div>
             <Label>Plano/Produto</Label>

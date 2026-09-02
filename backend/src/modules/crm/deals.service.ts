@@ -20,12 +20,14 @@ export class DealsService {
     private readonly liroCrmService: LiroCrmService,
   ) {}
 
-  create(organizationId: string, ownerId: string, dto: CreateDealDto) {
+  async create(organizationId: string, ownerId: string, dto: CreateDealDto) {
+    const leadId = dto.leadId ?? (await this.resolveOrCreateLead(organizationId, ownerId, dto));
+
     return this.prisma.deal.create({
       data: {
         organizationId,
         title: dto.title,
-        leadId: dto.leadId,
+        leadId,
         pipelineId: dto.pipelineId,
         stageId: dto.stageId,
         productPlan: dto.productPlan,
@@ -35,6 +37,45 @@ export class DealsService {
       },
       include: DEAL_INCLUDE,
     });
+  }
+
+  /**
+   * "Nova negociação" pode vir com nome/telefone/CNPJ digitados na hora,
+   * em vez de escolher um lead já existente (ver CreateDealDto) — a
+   * negociação nasce vinculada ao lead mesmo assim, pra alimentar
+   * Pós-venda quando fechar (ver markWon, que pega nome/documento/telefone
+   * do lead) e pra dar pra sincronizar com o Liro CRM depois. Casa por
+   * telefone pra não duplicar quem já existe; sem telefone, sempre cria
+   * um lead novo (não tem chave segura pra achar um já existente).
+   */
+  private async resolveOrCreateLead(
+    organizationId: string,
+    createdById: string,
+    dto: CreateDealDto,
+  ): Promise<string | undefined> {
+    if (!dto.contactName?.trim() && !dto.contactPhone?.trim()) return undefined;
+
+    const phone = dto.contactPhone?.trim() || undefined;
+    if (phone) {
+      const existente = await this.prisma.lead.findFirst({ where: { organizationId, phone } });
+      if (existente) return existente.id;
+    }
+
+    const documento = dto.contactDocument?.trim() || undefined;
+    const documentType = documento ? (documento.replace(/\D/g, '').length === 14 ? 'CNPJ' : 'CPF') : undefined;
+
+    const lead = await this.prisma.lead.create({
+      data: {
+        organizationId,
+        name: dto.contactName?.trim() || phone || dto.title,
+        phone,
+        document: documento,
+        documentType,
+        source: 'Funil de Vendas',
+        createdById,
+      },
+    });
+    return lead.id;
   }
 
   findAll(
