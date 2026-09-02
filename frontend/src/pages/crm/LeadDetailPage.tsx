@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Search, Users2 } from 'lucide-react';
+import { Plus, Search, Users2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select, Spinner, Textarea } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
@@ -10,7 +10,7 @@ import { useOrgUsers } from '@/hooks/useUsers';
 import { useToast } from '@/components/ui/toast';
 import { extractErrorMessage, useAuth } from '@/lib/auth-context';
 import { formatCurrency, formatDateTime, formatDocument } from '@/lib/utils';
-import { usePushLiroCrmTag } from '@/hooks/useIntegrations';
+import { usePushLiroCrmTag, useAddLeadToFunnel } from '@/hooks/useIntegrations';
 import { openLiroCrmConversation } from '@/lib/liro-crm';
 import type { ActivityType } from '@/types';
 
@@ -23,6 +23,7 @@ export function LeadDetailPage() {
   const updateLead = useUpdateLead();
   const createSector = useCreateSector();
   const pushTag = usePushLiroCrmTag();
+  const addToFunnel = useAddLeadToFunnel();
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
   const canManageSectors = currentUser?.role === 'ADMIN' || currentUser?.role === 'GESTOR';
@@ -36,6 +37,16 @@ export function LeadDetailPage() {
       toast({ tone: 'success', title: 'Telefone copiado', description: 'Cole na busca do painel do Liro CRM que abriu numa nova aba.' });
     } else {
       toast({ tone: 'error', title: 'Lead sem telefone cadastrado' });
+    }
+  };
+
+  const onAddToFunnel = async () => {
+    if (!id) return;
+    try {
+      await addToFunnel.mutateAsync(id);
+      toast({ tone: 'success', title: 'Adicionado ao Funil de Vendas' });
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao adicionar ao funil', description: extractErrorMessage(err) });
     }
   };
 
@@ -207,6 +218,11 @@ export function LeadDetailPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Negociações</CardTitle>
+            {!lead.deals?.some((d) => d.status === 'ABERTO') && (
+              <Button size="sm" variant="outline" onClick={onAddToFunnel} loading={addToFunnel.isPending}>
+                <Plus className="h-4 w-4" /> Adicionar ao Funil de Vendas
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="space-y-2">
             {lead.deals?.length ? (

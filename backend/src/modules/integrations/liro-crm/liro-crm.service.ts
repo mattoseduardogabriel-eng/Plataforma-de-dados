@@ -424,17 +424,13 @@ export class LiroCrmService {
 
   /**
    * Recebe o aviso do Liro (POST /api/integrations/liro-crm/webhook/:token)
-   * de que uma conversa mudou de etapa por lá — arrastar o card no
-   * Kanban do Liro, ou qualquer outro jeito de mover de lá. Acha o lead
-   * pelo `liroContactId` (ou telefone, se o lead ainda não tinha o
-   * vínculo gravado), acha o negócio aberto mais recente desse lead, e
-   * move ele pra etapa mapeada — direto no banco, sem passar por
-   * moveDeal(), justamente pra não disparar de volta um push pro Liro
-   * (senão vira ping-pong infinito entre os dois lados).
+   * — hoje dois eventos: `conversation_moved` (card arrastado no Kanban de
+   * lá) e `conversation_deleted` (atendimento excluído lá). Os dois
+   * mexem no banco DIRETO, sem passar por DealsService.move()/remove(),
+   * justamente pra não disparar de volta um push pro Liro e virar
+   * ping-pong infinito entre os dois lados.
    */
   async handleInboundWebhook(token: string, payload: Record<string, unknown>): Promise<void> {
-    if (payload.event !== 'conversation_moved') return;
-
     const org = await this.prisma.organization.findFirst({ where: { liroWebhookToken: token } });
     if (!org) {
       this.logger.warn('Webhook do Liro CRM recebido com token desconhecido — ignorado.');
@@ -442,9 +438,7 @@ export class LiroCrmService {
     }
 
     const contact = payload.contact as { id?: string; phoneNumber?: string } | undefined;
-    const conversation = payload.conversation as { kanbanStage?: { id?: string } } | undefined;
-    const liroStageId = conversation?.kanbanStage?.id;
-    if (!contact || !liroStageId) return;
+    if (!contact) return;
 
     const lead = await this.prisma.lead.findFirst({
       where: {
@@ -457,8 +451,24 @@ export class LiroCrmService {
     });
     if (!lead) return;
 
+    if (payload.event === 'conversation_moved') {
+      await this.moverNegocioParaEtapaMapeada(org.id, lead.id, payload);
+    } else if (payload.event === 'conversation_deleted') {
+      await this.removerDoFunilPorConversaExcluida(org.id, lead.id);
+    }
+  }
+
+  private async moverNegocioParaEtapaMapeada(
+    organizationId: string,
+    leadId: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const conversation = payload.conversation as { kanbanStage?: { id?: string } } | undefined;
+    const liroStageId = conversation?.kanbanStage?.id;
+    if (!liroStageId) return;
+
     const deal = await this.prisma.deal.findFirst({
-      where: { organizationId: org.id, leadId: lead.id, status: 'ABERTO' },
+      where: { organizationId, leadId, status: 'ABERTO' },
       orderBy: { updatedAt: 'desc' },
       include: { pipeline: true },
     });
@@ -471,13 +481,71 @@ export class LiroCrmService {
 
     await this.prisma.deal.update({ where: { id: deal.id }, data: { stageId: etapaAlvo.id } });
     await this.auditService.log({
-      organizationId: org.id,
+      organizationId,
       // Sem userId: veio de fora, não de uma ação de alguém logado.
       userId: undefined,
       action: 'LIRO_CRM_STAGE_SYNCED_FROM_LIRO',
       entityType: 'Deal',
       entityId: deal.id,
       metadata: { liroKanbanStageId: liroStageId, newStageId: etapaAlvo.id } as Prisma.InputJsonValue,
+    });
+  }
+
+  /**
+   * Atendimento excluído no Liro → o negócio some do Funil de Vendas
+   * (registro apagado), mas o Lead continua existindo normalmente na aba
+   * Leads — a pessoa pode recolocá-lo no funil quando quiser, pelo botão
+   * "Adicionar ao Funil de Vendas" no detalhe do lead.
+   */
+  private async removerDoFunilPorConversaExcluida(organizationId: string, leadId: string): Promise<void> {
+    const deals = await this.prisma.deal.findMany({ where: { organizationId, leadId, status: 'ABERTO' } });
+    if (deals.length === 0) return;
+
+    await this.prisma.deal.deleteMany({ where: { id: { in: deals.map((d) => d.id) } } });
+    await this.auditService.log({
+      organizationId,
+      userId: undefined,
+      action: 'LIRO_CRM_DEAL_REMOVED_FROM_FUNNEL',
+      entityType: 'Lead',
+      entityId: leadId,
+      metadata: { dealIds: deals.map((d) => d.id) } as Prisma.InputJsonValue,
+    });
+  }
+
+  /**
+   * "Adicionar ao Funil de Vendas" manual — mesma lógica de criação de
+   * negócio na 1ª etapa que o syncContacts já faz sozinho pra lead novo,
+   * só que sob demanda: pra um lead que nunca teve negócio, ou que saiu
+   * do funil (ex.: conversa excluída no Liro) e a pessoa quer colocar de
+   * volta quando quiser. Não deixa duplicar: se já tiver negócio ABERTO,
+   * é isso que devolve.
+   */
+  async addLeadToFunnel(organizationId: string, userId: string, leadId: string) {
+    const lead = await this.prisma.lead.findFirst({ where: { id: leadId, organizationId } });
+    if (!lead) {
+      throw new NotFoundException('Lead não encontrado.');
+    }
+
+    const existente = await this.prisma.deal.findFirst({ where: { organizationId, leadId, status: 'ABERTO' } });
+    if (existente) return existente;
+
+    const primeiraEtapa = await this.prisma.pipelineStage.findFirst({
+      where: { pipeline: { organizationId } },
+      orderBy: [{ pipeline: { isDefault: 'desc' } }, { order: 'asc' }],
+    });
+    if (!primeiraEtapa) {
+      throw new BadRequestException('Esta organização ainda não tem nenhum funil configurado.');
+    }
+
+    return this.prisma.deal.create({
+      data: {
+        organizationId,
+        leadId: lead.id,
+        pipelineId: primeiraEtapa.pipelineId,
+        stageId: primeiraEtapa.id,
+        title: lead.name,
+        ownerId: userId,
+      },
     });
   }
 }

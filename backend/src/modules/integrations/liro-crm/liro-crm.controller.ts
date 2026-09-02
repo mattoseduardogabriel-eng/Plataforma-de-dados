@@ -69,6 +69,14 @@ export class LiroCrmController {
     return this.liroCrmService.setStageMapping(user.organizationId, pipelineStageId, dto);
   }
 
+  // "Adicionar ao Funil de Vendas" manual — pra lead que nunca teve
+  // negócio, ou saiu do funil (ex.: conversa excluída no Liro) e a
+  // pessoa quer colocar de volta quando quiser.
+  @Post('leads/:leadId/add-to-funnel')
+  addLeadToFunnel(@CurrentUser() user: AuthenticatedUser, @Param('leadId') leadId: string) {
+    return this.liroCrmService.addLeadToFunnel(user.organizationId, user.id, leadId);
+  }
+
   // Chamado pelo Liro CRM em si (server-to-server, sem login) quando uma
   // conversa muda de etapa por lá — ver LiroCrmService.saveCredentials()
   // (registro automático) e handleInboundWebhook() (o que faz aqui). O

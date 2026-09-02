@@ -56,6 +56,20 @@ export function usePushLiroCrmTag() {
   });
 }
 
+// "Adicionar ao Funil de Vendas" manual — pra lead que nunca teve negócio,
+// ou que saiu do funil (ex.: conversa excluída no Liro CRM) e a pessoa
+// quer colocar de volta quando quiser.
+export function useAddLeadToFunnel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (leadId: string) => (await api.post(`/integrations/liro-crm/leads/${leadId}/add-to-funnel`)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crm', 'leads'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'deals'] });
+    },
+  });
+}
+
 // Etapas do Kanban do Liro CRM, pra montar a tela de mapeamento de funil
 // (qual etapa de lá corresponde a qual etapa do Aster). Só faz sentido
 // chamar com a integração já conectada — ver LiroCrmIntegrationCard.
