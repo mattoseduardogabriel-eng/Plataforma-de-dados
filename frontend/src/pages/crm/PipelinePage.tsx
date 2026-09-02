@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, Card, Input, Label, Select, Spinner, Badge } from '@/components/ui/primitives';
 import { Dialog } from '@/components/ui/dialog';
 import { usePipelines, useDeals, useCreateDeal, useMoveDeal, useCreatePipelineStage, useDeletePipelineStage } from '@/hooks/useCrm';
+import { useLiroCrmStatus, useSyncLiroCrmContacts } from '@/hooks/useIntegrations';
 import { useToast } from '@/components/ui/toast';
 import { extractErrorMessage, useAuth } from '@/lib/auth-context';
 import { cn, formatCurrency } from '@/lib/utils';
@@ -18,6 +19,8 @@ export function PipelinePage() {
   const createDeal = useCreateDeal();
   const createStage = useCreatePipelineStage();
   const deleteStage = useDeletePipelineStage();
+  const { data: liroStatus } = useLiroCrmStatus();
+  const syncLiro = useSyncLiroCrmContacts();
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
@@ -85,6 +88,24 @@ export function PipelinePage() {
     }
   };
 
+  // "Atualizar" não é só recarregar a tela: se o Liro CRM estiver
+  // conectado, primeiro roda a sincronização de contatos de verdade (a
+  // mesma de Configurações > Integrações), pra trazer lead/negócio novo
+  // na hora — sem isso a pessoa tinha que ir até lá pra forçar o mesmo
+  // resultado que devia sair daqui. A sincronização automática (a cada 5
+  // min, ver LiroCrmSyncScheduler no backend) continua rodando sozinha;
+  // isso aqui só cobre "eu não quero esperar".
+  const onAtualizar = async () => {
+    if (liroStatus?.configured) {
+      try {
+        await syncLiro.mutateAsync();
+      } catch (err) {
+        toast({ tone: 'error', title: 'Erro ao sincronizar com o Liro CRM', description: extractErrorMessage(err) });
+      }
+    }
+    await refetchDeals();
+  };
+
   const onDrop = async (stageId: string) => {
     if (!dragDealId) return;
     try {
@@ -110,7 +131,7 @@ export function PipelinePage() {
         title="Funil de Vendas"
         description="Arraste os cards entre as etapas para atualizar o status"
         actions={
-          <Button size="sm" variant="outline" onClick={() => refetchDeals()} loading={fetchingDeals}>
+          <Button size="sm" variant="outline" onClick={onAtualizar} loading={fetchingDeals || syncLiro.isPending}>
             <RefreshCw className="h-4 w-4" /> Atualizar
           </Button>
         }
