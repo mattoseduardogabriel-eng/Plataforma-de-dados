@@ -9,6 +9,23 @@ export function usePipelines() {
   });
 }
 
+export function useCreatePipelineStage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ pipelineId, name }: { pipelineId: string; name: string }) =>
+      (await api.post(`/crm/pipelines/${pipelineId}/stages`, { name })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm', 'pipelines'] }),
+  });
+}
+
+export function useDeletePipelineStage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (stageId: string) => (await api.delete(`/crm/pipelines/stages/${stageId}`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm', 'pipelines'] }),
+  });
+}
+
 export function useLeads(params: { status?: string; search?: string } = {}) {
   return useQuery({
     queryKey: ['crm', 'leads', params],

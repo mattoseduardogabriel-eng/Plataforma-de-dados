@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, Card, Input, Label, Select, Spinner, Badge } from '@/components/ui/primitives';
 import { Dialog } from '@/components/ui/dialog';
-import { usePipelines, useDeals, useCreateDeal, useMoveDeal } from '@/hooks/useCrm';
+import { usePipelines, useDeals, useCreateDeal, useMoveDeal, useCreatePipelineStage, useDeletePipelineStage } from '@/hooks/useCrm';
 import { useToast } from '@/components/ui/toast';
-import { extractErrorMessage } from '@/lib/auth-context';
+import { extractErrorMessage, useAuth } from '@/lib/auth-context';
 import { cn, formatCurrency } from '@/lib/utils';
 import type { Deal } from '@/types';
 
@@ -16,12 +16,18 @@ export function PipelinePage() {
   const { data: deals, isLoading: loadingDeals } = useDeals({ pipelineId: pipeline?.id, status: 'ABERTO' });
   const moveDeal = useMoveDeal();
   const createDeal = useCreateDeal();
+  const createStage = useCreatePipelineStage();
+  const deleteStage = useDeletePipelineStage();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
+  const isManager = currentUser?.role === 'ADMIN' || currentUser?.role === 'GESTOR';
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ title: '', value: '', productPlan: '', stageId: '' });
   const [dragDealId, setDragDealId] = useState<string | null>(null);
+  const [novaEtapaAberta, setNovaEtapaAberta] = useState(false);
+  const [novaEtapaNome, setNovaEtapaNome] = useState('');
 
   const dealsByStage = useMemo(() => {
     const map: Record<string, Deal[]> = {};
@@ -52,6 +58,27 @@ export function PipelinePage() {
       setDialogOpen(false);
     } catch (err) {
       toast({ tone: 'error', title: 'Erro ao criar negociação', description: extractErrorMessage(err) });
+    }
+  };
+
+  const onCreateStage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pipeline || !novaEtapaNome.trim()) return;
+    try {
+      await createStage.mutateAsync({ pipelineId: pipeline.id, name: novaEtapaNome.trim() });
+      setNovaEtapaNome('');
+      setNovaEtapaAberta(false);
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao criar etapa', description: extractErrorMessage(err) });
+    }
+  };
+
+  const onDeleteStage = async (stageId: string, stageName: string) => {
+    if (!confirm(`Excluir a etapa "${stageName}"? Só dá se não tiver nenhuma negociação nela.`)) return;
+    try {
+      await deleteStage.mutateAsync(stageId);
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao excluir etapa', description: extractErrorMessage(err) });
     }
   };
 
@@ -91,9 +118,20 @@ export function PipelinePage() {
                 <span className="text-sm font-semibold text-slate-700">{stage.name}</span>
                 <Badge tone="neutral">{dealsByStage[stage.id]?.length ?? 0}</Badge>
               </div>
-              <button onClick={() => openDialog(stage.id)} className="text-slate-400 hover:text-brand-300">
-                <Plus className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button onClick={() => openDialog(stage.id)} className="text-slate-400 hover:text-brand-300" title="Nova negociação nesta etapa">
+                  <Plus className="h-4 w-4" />
+                </button>
+                {isManager && (
+                  <button
+                    onClick={() => onDeleteStage(stage.id, stage.name)}
+                    className="text-slate-400 hover:text-red-400"
+                    title="Excluir etapa (só se estiver vazia)"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="flex flex-1 flex-col gap-2">
               {(dealsByStage[stage.id] ?? []).map((deal) => (
@@ -121,6 +159,37 @@ export function PipelinePage() {
             </div>
           </div>
         ))}
+
+        {isManager && (
+          <div className="w-64 shrink-0">
+            {novaEtapaAberta ? (
+              <form onSubmit={onCreateStage} className="rounded-xl border border-dashed border-brand-400 bg-slate-100 p-3">
+                <Input
+                  autoFocus
+                  placeholder="Nome da etapa..."
+                  value={novaEtapaNome}
+                  onChange={(e) => setNovaEtapaNome(e.target.value)}
+                  className="mb-2"
+                />
+                <div className="flex gap-2">
+                  <Button type="submit" size="sm" className="flex-1" loading={createStage.isPending} disabled={!novaEtapaNome.trim()}>
+                    Criar
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" className="flex-1" onClick={() => { setNovaEtapaAberta(false); setNovaEtapaNome(''); }}>
+                    Cancelar
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <button
+                onClick={() => setNovaEtapaAberta(true)}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 text-sm text-slate-500 hover:border-brand-400 hover:text-brand-300"
+              >
+                <Plus className="h-4 w-4" /> Nova etapa
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title="Nova negociação">
