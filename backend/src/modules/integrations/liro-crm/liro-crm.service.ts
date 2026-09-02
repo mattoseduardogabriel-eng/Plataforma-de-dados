@@ -172,10 +172,33 @@ export class LiroCrmService {
       }
     }
 
-    await this.prisma.organization.update({
-      where: { id: organizationId },
-      data: { liroCrmLastSyncedAt: new Date() },
-    });
+    // Marca-d'água da próxima sincronização incremental: usamos o `updatedAt`
+    // mais recente ENTRE OS CONTATOS RECEBIDOS, nunca o relógio de agora.
+    // Motivo: se stampássemos sempre `new Date()`, uma sincronização que por
+    // qualquer razão transitória viesse vazia (API fora do ar, deploy do
+    // Liro ainda propagando, banco temporariamente errado) "envenenaria" o
+    // `since` pra sempre — toda sincronização seguinte passaria a filtrar
+    // só contatos atualizados DEPOIS desse carimbo, escondendo pra sempre
+    // contatos que já existiam e nunca mais tocaram. Só avançamos o
+    // carimbo quando realmente veio gente na resposta, e usando a data real
+    // dos dados — nunca regride, mesmo se algum contato vier com
+    // `updatedAt` corrompido/ausente.
+    if (contacts.length > 0) {
+      const maisRecente = contacts.reduce<Date | undefined>((max, contact) => {
+        const bruto = contact.updatedAt;
+        if (typeof bruto !== 'string') return max;
+        const data = new Date(bruto);
+        if (Number.isNaN(data.getTime())) return max;
+        return !max || data > max ? data : max;
+      }, org.liroCrmLastSyncedAt ?? undefined);
+
+      if (maisRecente) {
+        await this.prisma.organization.update({
+          where: { id: organizationId },
+          data: { liroCrmLastSyncedAt: maisRecente },
+        });
+      }
+    }
 
     await this.auditService.log({
       organizationId,
