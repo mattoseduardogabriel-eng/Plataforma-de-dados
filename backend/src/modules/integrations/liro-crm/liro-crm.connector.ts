@@ -144,8 +144,9 @@ export class LiroCrmConnector {
     return this.unwrapList<LiroTag>(raw);
   }
 
+  /** O Liro real responde `{ ok: true, tag: { id, name } }` — ver API_EXTERNA.md do Liro CRM. */
   tagContact(creds: LiroCredentials, contactId: string, tagName: string) {
-    return this.request<{ success: boolean }>(creds, 'post', `/contacts/${contactId}/tags`, {
+    return this.request<{ ok: boolean; tag: LiroTag }>(creds, 'post', `/contacts/${contactId}/tags`, {
       data: { tagName },
     });
   }
