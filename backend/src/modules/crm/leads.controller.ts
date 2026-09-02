@@ -3,6 +3,8 @@ import { ApiTags } from '@nestjs/swagger';
 import { LeadsService } from './leads.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
+import { SaveLeadToWalletDto } from './dto/save-lead-to-wallet.dto';
+import { SaveLeadsToWalletBulkDto } from './dto/save-leads-to-wallet-bulk.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
@@ -44,5 +46,19 @@ export class LeadsController {
   @Delete(':id')
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.leadsService.remove(user.organizationId, id);
+  }
+
+  @Post(':id/save-to-wallet')
+  saveToWallet(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: SaveLeadToWalletDto,
+  ) {
+    return this.leadsService.saveToWallet(user.organizationId, id, dto.name);
+  }
+
+  @Post('save-to-wallet/bulk')
+  saveManyToWallet(@CurrentUser() user: AuthenticatedUser, @Body() dto: SaveLeadsToWalletBulkDto) {
+    return this.leadsService.saveManyToWallet(user.organizationId, dto.items);
   }
 }

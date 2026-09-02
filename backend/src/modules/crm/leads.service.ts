@@ -1,13 +1,22 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
 
+export type SaveToWalletResultado =
+  | { leadId: string; status: 'criado'; customerId: string }
+  | { leadId: string; status: 'ja_estava_na_carteira'; customerId: string }
+  | { leadId: string; status: 'nao_encontrado' };
+
 const LEAD_INCLUDE = {
   assignedTo: { select: { id: true, name: true } },
   sector: true,
   additionalAssignees: { include: { user: { select: { id: true, name: true } } } },
+  // Só o id: a lista de leads usa isso pra saber se mostra "Salvar na
+  // carteira" ou "Já está na carteira" (ver Customer.leadId), sem precisar
+  // buscar o cliente inteiro.
+  customer: { select: { id: true } },
 } satisfies Prisma.LeadInclude;
 
 @Injectable()
@@ -97,5 +106,71 @@ export class LeadsService {
     await this.findOne(organizationId, id);
     await this.prisma.lead.update({ where: { id }, data: { status: 'DESCARTADO' } });
     return { success: true };
+  }
+
+  /**
+   * "Salvar na carteira" — cria um Customer (Pós-venda) direto a partir de
+   * um lead, sem passar pelo funil de vendas/negociação (esse é o caminho
+   * automático de markWon() em deals.service.ts; este aqui é o manual, pra
+   * quando o lead já é reconhecidamente um cliente — ex.: veio sincronizado
+   * do Liro CRM). O nome pode ser corrigido na hora de salvar (o contato do
+   * WhatsApp às vezes não tem nome, só telefone). `Customer.leadId` é
+   * @unique, então nunca duplica: se o lead já tiver sido salvo antes,
+   * lança ConflictException com o id do cliente já existente, pro
+   * chamador poder avisar "já está na carteira" em vez de tentar de novo.
+   */
+  async saveToWallet(organizationId: string, id: string, name?: string) {
+    const lead = await this.findOne(organizationId, id);
+    if (lead.customer) {
+      throw new ConflictException({
+        message: 'Este lead já está na carteira de clientes.',
+        customerId: lead.customer.id,
+      });
+    }
+
+    const nomeFinal = name?.trim() || lead.name;
+    return this.prisma.customer.create({
+      data: {
+        organizationId,
+        name: nomeFinal,
+        document: lead.document,
+        documentType: lead.documentType,
+        email: lead.email,
+        phone: lead.phone,
+        liroContactId: lead.liroContactId,
+        status: 'ATIVO',
+        leadId: lead.id,
+      },
+    });
+  }
+
+  /**
+   * Mesma coisa em massa (checkbox de seleção na lista de leads) — nunca
+   * lança: cada item do lote vira um resultado próprio ('criado',
+   * 'ja_estava_na_carteira' ou 'nao_encontrado'), pro front poder mostrar
+   * "N salvos, M já estavam na carteira" sem um item ruim derrubar o lote
+   * inteiro.
+   */
+  async saveManyToWallet(
+    organizationId: string,
+    items: { leadId: string; name?: string }[],
+  ): Promise<SaveToWalletResultado[]> {
+    const resultados: SaveToWalletResultado[] = [];
+    for (const item of items) {
+      try {
+        const customer = await this.saveToWallet(organizationId, item.leadId, item.name);
+        resultados.push({ leadId: item.leadId, status: 'criado', customerId: customer.id });
+      } catch (err) {
+        if (err instanceof ConflictException) {
+          const resposta = err.getResponse() as { customerId: string };
+          resultados.push({ leadId: item.leadId, status: 'ja_estava_na_carteira', customerId: resposta.customerId });
+        } else if (err instanceof NotFoundException) {
+          resultados.push({ leadId: item.leadId, status: 'nao_encontrado' });
+        } else {
+          throw err;
+        }
+      }
+    }
+    return resultados;
   }
 }
