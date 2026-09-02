@@ -190,6 +190,10 @@ export class BackofficeService {
         subscriptionPriceCents: dto.subscriptionPriceCents,
         nextBillingAt: dto.nextBillingAt ? new Date(dto.nextBillingAt) : undefined,
         trialEndsAt: dto.trialEndsAt ? new Date(dto.trialEndsAt) : undefined,
+        // Toda vez que o dono da plataforma mexe no plano/preço, pede pra
+        // empresa confirmar de novo — evita "assinatura" antiga valendo
+        // pra termos novos sem o ADMIN ter visto.
+        subscriptionConfirmedAt: null,
       },
     });
 

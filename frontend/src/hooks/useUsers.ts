@@ -40,3 +40,11 @@ export function useUpdateOrganization() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['organization'] }),
   });
 }
+
+export function useConfirmSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => (await api.post('/organizations/me/subscription/confirm')).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['organization'] }),
+  });
+}

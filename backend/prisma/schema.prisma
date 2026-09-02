@@ -46,6 +46,10 @@ model Organization {
   // Preenchido quando a empresa é aprovada (ou editado manualmente); login é
   // bloqueado se subscriptionStatus continuar TRIAL depois dessa data.
   trialEndsAt            DateTime?
+  // Preenchido quando o ADMIN da própria empresa confirma/assina o plano
+  // definido pelo dono da plataforma — puramente informativo (não há
+  // gateway de pagamento integrado), mas registra o aceite formal.
+  subscriptionConfirmedAt DateTime?
 
   // Teto de ferramentas que o dono da plataforma liberou pra essa empresa
   // (ver backend/src/common/features/platform-features.ts). Chaves fora

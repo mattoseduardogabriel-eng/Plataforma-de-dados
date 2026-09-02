@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { OrganizationsService } from './organizations.service';
@@ -20,5 +20,11 @@ export class OrganizationsController {
   @Patch()
   update(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateOrganizationDto) {
     return this.organizationsService.update(user.organizationId, dto);
+  }
+
+  @Roles(Role.ADMIN)
+  @Post('subscription/confirm')
+  confirmSubscription(@CurrentUser() user: AuthenticatedUser) {
+    return this.organizationsService.confirmSubscription(user.organizationId, user.id);
   }
 }

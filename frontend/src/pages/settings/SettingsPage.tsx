@@ -12,6 +12,7 @@ import { extractErrorMessage } from '@/lib/auth-context';
 import { LiroCrmIntegrationCard } from './LiroCrmIntegrationCard';
 import { PersonalDataProviderCard } from './PersonalDataProviderCard';
 import { FeaturesSettingsCard } from './FeaturesSettingsCard';
+import { SubscriptionCard } from './SubscriptionCard';
 import type { Role, User } from '@/types';
 
 const ROLES: Role[] = ['ADMIN', 'GESTOR', 'VENDEDOR', 'FINANCEIRO', 'ATENDIMENTO', 'ANALISTA'];
@@ -105,28 +106,32 @@ export function SettingsPage() {
       </Tabs>
 
       {tab === 'organizacao' && (
-        <Card className="max-w-lg">
-          <CardHeader><CardTitle>Dados da organização</CardTitle></CardHeader>
-          <CardContent>
-            {loadingOrg ? (
-              <Spinner />
-            ) : (
-              <form onSubmit={onSaveOrg} className="space-y-4">
-                <div>
-                  <Label>Nome</Label>
-                  <Input required disabled={!isAdmin} value={orgForm.name} onChange={(e) => setOrgForm((f) => ({ ...f, name: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>CNPJ</Label>
-                  <Input disabled={!isAdmin} value={orgForm.cnpj} onChange={(e) => setOrgForm((f) => ({ ...f, cnpj: e.target.value }))} />
-                </div>
-                {isAdmin && (
-                  <Button type="submit" loading={updateOrg.isPending}>Salvar</Button>
-                )}
-              </form>
-            )}
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          <Card className="max-w-lg">
+            <CardHeader><CardTitle>Dados da organização</CardTitle></CardHeader>
+            <CardContent>
+              {loadingOrg ? (
+                <Spinner />
+              ) : (
+                <form onSubmit={onSaveOrg} className="space-y-4">
+                  <div>
+                    <Label>Nome</Label>
+                    <Input required disabled={!isAdmin} value={orgForm.name} onChange={(e) => setOrgForm((f) => ({ ...f, name: e.target.value }))} />
+                  </div>
+                  <div>
+                    <Label>CNPJ</Label>
+                    <Input disabled={!isAdmin} value={orgForm.cnpj} onChange={(e) => setOrgForm((f) => ({ ...f, cnpj: e.target.value }))} />
+                  </div>
+                  {isAdmin && (
+                    <Button type="submit" loading={updateOrg.isPending}>Salvar</Button>
+                  )}
+                </form>
+              )}
+            </CardContent>
+          </Card>
+
+          <SubscriptionCard isAdmin={isAdmin} />
+        </div>
       )}
 
       {tab === 'usuarios' && (

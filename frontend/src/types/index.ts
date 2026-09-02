@@ -22,6 +22,12 @@ export interface Organization {
   active?: boolean;
   isPlatform?: boolean;
   createdAt?: string;
+  subscriptionStatus?: SubscriptionStatus;
+  subscriptionPlan?: string | null;
+  subscriptionPriceCents?: number | null;
+  nextBillingAt?: string | null;
+  trialEndsAt?: string | null;
+  subscriptionConfirmedAt?: string | null;
 }
 
 // ── Backoffice (dono da plataforma) ────────────────────────────────────
