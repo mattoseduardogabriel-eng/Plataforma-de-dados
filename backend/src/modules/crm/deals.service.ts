@@ -5,6 +5,7 @@ import { CreateDealDto } from './dto/create-deal.dto';
 import { UpdateDealDto } from './dto/update-deal.dto';
 import { CloseDealDto } from './dto/close-deal.dto';
 import { LiroCrmService } from '../integrations/liro-crm/liro-crm.service';
+import { normalizePhone } from '../../common/utils/phone.util';
 
 const DEAL_INCLUDE = {
   stage: true,
@@ -23,7 +24,7 @@ export class DealsService {
   async create(organizationId: string, ownerId: string, dto: CreateDealDto) {
     const leadId = dto.leadId ?? (await this.resolveOrCreateLead(organizationId, ownerId, dto));
 
-    return this.prisma.deal.create({
+    const deal = await this.prisma.deal.create({
       data: {
         organizationId,
         title: dto.title,
@@ -37,6 +38,14 @@ export class DealsService {
       },
       include: DEAL_INCLUDE,
     });
+
+    // Igual ao move() — o negócio já nasce numa etapa, então precisa
+    // refletir no Liro CRM desde a criação, não só quando é arrastado
+    // depois. Melhor esforço, não bloqueia a resposta (ver
+    // LiroCrmService.pushStageForDeal).
+    this.liroCrmService.pushStageForDeal(organizationId, deal.id).catch(() => {});
+
+    return deal;
   }
 
   /**
@@ -55,7 +64,10 @@ export class DealsService {
   ): Promise<string | undefined> {
     if (!dto.contactName?.trim() && !dto.contactPhone?.trim()) return undefined;
 
-    const phone = dto.contactPhone?.trim() || undefined;
+    // Normalizado (55 + DDD + 9 dígitos) — pra "44998771425" e
+    // "5544998771425" (ou sem o 9º dígito) casarem com o mesmo lead em
+    // vez de criar dois (ver phone.util.ts).
+    const phone = dto.contactPhone?.trim() ? (normalizePhone(dto.contactPhone.trim()) ?? undefined) : undefined;
     if (phone) {
       const existente = await this.prisma.lead.findFirst({ where: { organizationId, phone } });
       if (existente) return existente.id;

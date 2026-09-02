@@ -9,6 +9,7 @@ import { LiroCrmConnector, LiroCredentials } from './liro-crm.connector';
 import { SaveLiroCrmCredentialsDto } from './dto/save-credentials.dto';
 import { SetStageMappingDto } from './dto/set-stage-mapping.dto';
 import { LiroContact } from './liro-crm.connector';
+import { normalizePhone } from '../../../common/utils/phone.util';
 
 /**
  * Extrai o nome do operador/atendente responsável pelo contato no Liro CRM,
@@ -182,6 +183,11 @@ export class LiroCrmService {
     let updated = 0;
     for (const contact of contacts) {
       if (!contact.phoneNumber) continue;
+      // Sempre no mesmo formato (55 + DDD + 9 dígitos) — pra casar com um
+      // lead já existente mesmo que ele tenha sido criado antes dessa
+      // normalização existir, ou por um caminho que ainda não normalizava
+      // (ver phone.util.ts).
+      const phoneNormalizado = normalizePhone(contact.phoneNumber) ?? contact.phoneNumber;
 
       const documentType: DocumentType | undefined = contact.cnpj ? 'CNPJ' : contact.cpf ? 'CPF' : undefined;
       const document = contact.cnpj ?? contact.cpf ?? undefined;
@@ -190,7 +196,7 @@ export class LiroCrmService {
       const existing = await this.prisma.lead.findFirst({
         where: {
           organizationId,
-          OR: [{ liroContactId: contact.id }, { phone: contact.phoneNumber }],
+          OR: [{ liroContactId: contact.id }, { phone: phoneNormalizado }],
         },
         include: { deals: { select: { id: true }, take: 1 } },
       });
@@ -229,7 +235,7 @@ export class LiroCrmService {
           data: {
             organizationId,
             name: contact.name || contact.phoneNumber,
-            phone: contact.phoneNumber,
+            phone: phoneNormalizado,
             companyName: contact.companyName,
             document,
             documentType,
@@ -338,7 +344,11 @@ export class LiroCrmService {
       throw new BadRequestException('Lead sem telefone — não é possível vincular ao Liro CRM.');
     }
     const contact = await this.connector.upsertContact(creds, {
-      phoneNumber: lead.phone,
+      // Normalizado de novo aqui — defensivo, caso o lead tenha sido
+      // gravado antes dessa normalização existir (ver phone.util.ts). O
+      // Liro também normaliza do lado dele, então isso garante que os
+      // dois lados sempre casem no mesmo formato.
+      phoneNumber: normalizePhone(lead.phone) ?? lead.phone,
       name: lead.name,
       cnpj: lead.documentType === 'CNPJ' ? lead.document : undefined,
       cpf: lead.documentType === 'CPF' ? lead.document : undefined,
@@ -462,13 +472,14 @@ export class LiroCrmService {
 
     const contact = payload.contact as { id?: string; phoneNumber?: string } | undefined;
     if (!contact) return;
+    const phoneNormalizado = contact.phoneNumber ? normalizePhone(contact.phoneNumber) : null;
 
     const lead = await this.prisma.lead.findFirst({
       where: {
         organizationId: org.id,
         OR: [
           ...(contact.id ? [{ liroContactId: contact.id }] : []),
-          ...(contact.phoneNumber ? [{ phone: contact.phoneNumber }] : []),
+          ...(phoneNormalizado ? [{ phone: phoneNormalizado }] : []),
         ],
       },
     });
@@ -560,7 +571,7 @@ export class LiroCrmService {
       throw new BadRequestException('Esta organização ainda não tem nenhum funil configurado.');
     }
 
-    return this.prisma.deal.create({
+    const deal = await this.prisma.deal.create({
       data: {
         organizationId,
         leadId: lead.id,
@@ -570,5 +581,11 @@ export class LiroCrmService {
         ownerId: userId,
       },
     });
+
+    // Mesmo motivo do DealsService.create() — o negócio já nasce numa
+    // etapa, reflete no Liro desde já se ela tiver mapeamento.
+    this.pushStageForDeal(organizationId, deal.id).catch(() => {});
+
+    return deal;
   }
 }
