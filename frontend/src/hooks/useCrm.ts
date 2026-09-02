@@ -127,6 +127,10 @@ export function useDeals(params: { pipelineId?: string; stageId?: string; status
   return useQuery({
     queryKey: ['crm', 'deals', params],
     queryFn: async () => (await api.get<Deal[]>('/crm/deals', { params })).data,
+    // Funil de Vendas também muda por fora (webhook do Liro CRM movendo um
+    // negócio em tempo real) — sem isso só atualiza na tela quando ALGUÉM
+    // aqui mexe em algo, nunca por causa do que aconteceu do lado de lá.
+    refetchInterval: 5000,
   });
 }
 
