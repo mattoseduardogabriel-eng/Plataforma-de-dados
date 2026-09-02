@@ -266,4 +266,30 @@ export class AuthService {
     }
     return user;
   }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+    const matches = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!matches) {
+      throw new UnauthorizedException('Senha atual incorreta.');
+    }
+    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await this.prisma.user.update({
+      where: { id: userId },
+      // Derruba as outras sessões (tokenVersion) — só quem digitou a senha
+      // nova continua logado.
+      data: { passwordHash, hashedRefreshToken: null, tokenVersion: { increment: 1 } },
+    });
+    await this.auditService.log({
+      organizationId: user.organizationId,
+      userId: user.id,
+      action: 'PASSWORD_CHANGED',
+      entityType: 'User',
+      entityId: user.id,
+    });
+    return { success: true };
+  }
 }

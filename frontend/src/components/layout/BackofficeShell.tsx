@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
-import { LogOut, Orbit, Building2 } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { LogOut, Orbit, Building2, KeyRound } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { initials } from '@/lib/utils';
 import { PRODUCT_NAME } from '@/lib/brand';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { ChangePasswordDialog } from '@/components/ChangePasswordDialog';
 
 /**
  * Layout próprio do backoffice do dono da plataforma — deliberadamente sem
@@ -12,6 +13,7 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
  */
 export function BackofficeShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <header className="flex h-16 items-center gap-4 border-b border-slate-200 bg-slate-100 px-4 lg:px-6">
@@ -37,6 +39,14 @@ export function BackofficeShell({ children }: { children: ReactNode }) {
             {user ? initials(user.name) : ''}
           </div>
           <ThemeToggle />
+          <button
+            onClick={() => setChangePasswordOpen(true)}
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+            title="Trocar senha"
+          >
+            <KeyRound className="h-4 w-4" />
+          </button>
+          <ChangePasswordDialog open={changePasswordOpen} onClose={() => setChangePasswordOpen(false)} />
           <button
             onClick={() => logout()}
             className="rounded-lg p-2 text-slate-400 hover:bg-slate-200 hover:text-slate-600"

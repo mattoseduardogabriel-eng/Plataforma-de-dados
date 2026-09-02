@@ -1,12 +1,13 @@
 import { type ReactNode, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LogOut, Menu, X, Orbit } from 'lucide-react';
+import { LogOut, Menu, X, Orbit, KeyRound } from 'lucide-react';
 import { navGroups } from './nav-config';
 import { useAuth } from '@/lib/auth-context';
 import { useEffectiveFeatures } from '@/hooks/useFeatures';
 import { cn, initials } from '@/lib/utils';
 import { PRODUCT_NAME, PRODUCT_TAGLINE } from '@/lib/brand';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { ChangePasswordDialog } from '@/components/ChangePasswordDialog';
 
 function Sidebar({ mobileOpen, onCloseMobile }: { mobileOpen: boolean; onCloseMobile: () => void }) {
   // Sem dado ainda (carregando) mostra tudo — evita o menu "piscar" vazio;
@@ -83,6 +84,7 @@ function Sidebar({ mobileOpen, onCloseMobile }: { mobileOpen: boolean; onCloseMo
 
 function Topbar({ onOpenMobile }: { onOpenMobile: () => void }) {
   const { user, organization, logout } = useAuth();
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   return (
     <header className="flex h-16 items-center gap-4 border-b border-slate-200 bg-slate-100 px-4 lg:px-6">
       <button onClick={onOpenMobile} className="text-slate-500 lg:hidden">
@@ -101,6 +103,14 @@ function Topbar({ onOpenMobile }: { onOpenMobile: () => void }) {
           {user ? initials(user.name) : ''}
         </div>
         <ThemeToggle />
+        <button
+          onClick={() => setChangePasswordOpen(true)}
+          className="rounded-lg p-2 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+          title="Trocar senha"
+        >
+          <KeyRound className="h-4 w-4" />
+        </button>
+        <ChangePasswordDialog open={changePasswordOpen} onClose={() => setChangePasswordOpen(false)} />
         <button
           onClick={() => logout()}
           className="rounded-lg p-2 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
