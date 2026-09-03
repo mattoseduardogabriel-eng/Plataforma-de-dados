@@ -6,6 +6,7 @@ import { UpdateDealDto } from './dto/update-deal.dto';
 import { CloseDealDto } from './dto/close-deal.dto';
 import { LiroCrmService } from '../integrations/liro-crm/liro-crm.service';
 import { normalizePhone } from '../../common/utils/phone.util';
+import { AuditService } from '../audit/audit.service';
 
 const DEAL_INCLUDE = {
   stage: true,
@@ -19,6 +20,7 @@ export class DealsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly liroCrmService: LiroCrmService,
+    private readonly auditService: AuditService,
   ) {}
 
   async create(organizationId: string, ownerId: string, dto: CreateDealDto) {
@@ -161,6 +163,30 @@ export class DealsService {
     this.liroCrmService.pushStageForDeal(organizationId, id).catch(() => {});
 
     return this.findOne(organizationId, id);
+  }
+
+  /**
+   * Remove negociações do Funil de Vendas de uma vez (seleção em retângulo
+   * no quadro) — mesma semântica de "conversa excluída no Liro" (ver
+   * LiroCrmService.removerDoFunilPorConversaExcluida): apaga só o(s)
+   * Deal(s), o Lead de origem continua existindo e pode voltar pro funil
+   * depois em "Adicionar ao Funil de Vendas". `deleteMany` já é escopado
+   * por organizationId, então um id de outra organização não é apagado.
+   */
+  async removeMany(organizationId: string, userId: string, ids: string[]) {
+    const result = await this.prisma.deal.deleteMany({
+      where: { organizationId, id: { in: ids } },
+    });
+
+    await this.auditService.log({
+      organizationId,
+      userId,
+      action: 'DEAL_REMOVED_FROM_FUNNEL',
+      entityType: 'Deal',
+      metadata: { requested: ids.length, removed: result.count } as Prisma.InputJsonValue,
+    });
+
+    return { removed: result.count };
   }
 
   async close(organizationId: string, id: string, dto: CloseDealDto, userId: string) {

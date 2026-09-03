@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { DealsService } from './deals.service';
 import { CreateDealDto } from './dto/create-deal.dto';
 import { UpdateDealDto } from './dto/update-deal.dto';
 import { MoveDealDto } from './dto/move-deal.dto';
 import { CloseDealDto } from './dto/close-deal.dto';
+import { BulkRemoveDealsDto } from './dto/bulk-remove-deals.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
@@ -52,5 +53,13 @@ export class DealsController {
   @Patch(':id/close')
   close(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: CloseDealDto) {
     return this.dealsService.close(user.organizationId, id, dto, user.id);
+  }
+
+  // Remove do Funil de Vendas (o Lead de origem continua existindo) —
+  // usado pela seleção em retângulo no quadro. Sem rota de id único de
+  // propósito: manda sempre uma lista, mesmo que com 1 item.
+  @Delete()
+  removeMany(@CurrentUser() user: AuthenticatedUser, @Body() dto: BulkRemoveDealsDto) {
+    return this.dealsService.removeMany(user.organizationId, user.id, dto.ids);
   }
 }
