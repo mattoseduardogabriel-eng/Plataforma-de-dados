@@ -125,6 +125,69 @@ export class LeadsService {
     return lead;
   }
 
+  /**
+   * Mescla o lead achado pelo telefone (`otherPhone`) DENTRO do lead `id`
+   * — resolve o caso de dado legado duplicado (o mesmo telefone virou
+   * dois leads separados, um pela sincronização, outro criado manualmente
+   * antes da normalização existir), que nenhuma correção de matching
+   * sozinha desfaz: editar um dos dois nunca refletia no outro porque são
+   * registros diferentes de verdade.
+   *
+   * Negócios e atividades do lead absorvido passam a apontar pro lead
+   * sobrevivente; campos em branco do sobrevivente são preenchidos com o
+   * valor do absorvido (nunca sobrescreve o que já está preenchido). Se
+   * os dois já tiverem cliente na carteira (Customer.leadId, @unique),
+   * não dá pra decidir sozinho qual descartar — lança erro pedindo pra
+   * resolver manualmente em vez de arriscar perder histórico de um dos
+   * dois clientes.
+   */
+  async mergeByPhone(organizationId: string, id: string, otherPhone: string) {
+    const keep = await this.findOne(organizationId, id);
+
+    const normalized = normalizePhone(otherPhone) ?? otherPhone;
+    const orConditions: Prisma.LeadWhereInput[] = [{ phone: normalized }];
+    const ultimosDigitos = normalized.slice(-8);
+    if (ultimosDigitos.length === 8) orConditions.push({ phone: { endsWith: ultimosDigitos } });
+
+    const other = await this.prisma.lead.findFirst({
+      where: { organizationId, id: { not: id }, OR: orConditions },
+      include: { customer: { select: { id: true } } },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!other) {
+      throw new NotFoundException('Nenhum outro lead encontrado com esse telefone.');
+    }
+    if (keep.customer && other.customer) {
+      throw new ConflictException(
+        'Os dois leads já têm cliente na carteira vinculado — não dá pra mesclar automaticamente sem risco de perder histórico. Resolva manualmente qual carteira manter.',
+      );
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.deal.updateMany({ where: { leadId: other.id }, data: { leadId: keep.id } }),
+      this.prisma.activity.updateMany({ where: { leadId: other.id }, data: { leadId: keep.id } }),
+      this.prisma.leadAssignee.deleteMany({ where: { leadId: other.id } }),
+      ...(other.customer
+        ? [this.prisma.customer.update({ where: { id: other.customer.id }, data: { leadId: keep.id } })]
+        : []),
+      this.prisma.lead.update({
+        where: { id: keep.id },
+        data: {
+          name: keep.name || other.name,
+          email: keep.email ?? other.email,
+          document: keep.document ?? other.document,
+          documentType: keep.documentType ?? other.documentType,
+          companyName: keep.companyName ?? other.companyName,
+          source: keep.source ?? other.source,
+          liroContactId: keep.liroContactId ?? other.liroContactId,
+        },
+      }),
+      this.prisma.lead.delete({ where: { id: other.id } }),
+    ]);
+
+    return this.findOne(organizationId, keep.id);
+  }
+
   async update(organizationId: string, id: string, dto: UpdateLeadDto) {
     await this.findOne(organizationId, id);
     const { additionalAssigneeIds, ...rest } = dto;

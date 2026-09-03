@@ -61,6 +61,19 @@ export function useUpdateLead() {
   });
 }
 
+/** Mescla o lead achado pelo telefone informado DENTRO do lead `id` — resolve duplicata legada (mesmo telefone, dois leads separados). */
+export function useMergeLead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, phone }: { id: string; phone: string }) => (await api.post(`/crm/leads/${id}/merge`, { phone })).data,
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['crm', 'leads'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'leads', variables.id] });
+      qc.invalidateQueries({ queryKey: ['crm', 'deals'] });
+    },
+  });
+}
+
 // "Salvar na carteira": cria o Customer (Pós-venda) direto do lead, sem
 // passar pelo funil de negociação. Deixa passar o nome ajustado (o
 // contato do WhatsApp às vezes só tem telefone).

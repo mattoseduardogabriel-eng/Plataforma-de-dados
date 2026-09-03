@@ -12,7 +12,7 @@ const DEAL_INCLUDE = {
   stage: true,
   pipeline: true,
   owner: { select: { id: true, name: true } },
-  lead: { select: { id: true, name: true, document: true, documentType: true } },
+  lead: { select: { id: true, name: true, document: true, documentType: true, phone: true, email: true, companyName: true } },
 } satisfies Prisma.DealInclude;
 
 @Injectable()

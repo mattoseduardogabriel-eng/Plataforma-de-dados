@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { Pencil } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Spinner, Textarea } from '@/components/ui/primitives';
-import { useDeal, useCloseDeal, useCreateActivity } from '@/hooks/useCrm';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Spinner, Textarea } from '@/components/ui/primitives';
+import { Dialog } from '@/components/ui/dialog';
+import { useDeal, useCloseDeal, useCreateActivity, useUpdateLead } from '@/hooks/useCrm';
 import { useToast } from '@/components/ui/toast';
 import { extractErrorMessage } from '@/lib/auth-context';
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
@@ -12,9 +14,42 @@ export function DealDetailPage() {
   const { data: deal, isLoading } = useDeal(id);
   const closeDeal = useCloseDeal();
   const createActivity = useCreateActivity();
+  const updateLead = useUpdateLead();
   const { toast } = useToast();
   const [note, setNote] = useState('');
   const [lostReason, setLostReason] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', companyName: '' });
+
+  const onOpenEdit = () => {
+    if (!deal?.lead) return;
+    setEditForm({
+      name: deal.lead.name ?? '',
+      email: deal.lead.email ?? '',
+      phone: deal.lead.phone ?? '',
+      companyName: deal.lead.companyName ?? '',
+    });
+    setEditOpen(true);
+  };
+
+  const onSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deal?.lead) return;
+    try {
+      await updateLead.mutateAsync({
+        id: deal.lead.id,
+        name: editForm.name.trim(),
+        email: editForm.email.trim() || null,
+        // O back-end normaliza pro padrão 55 + DDD + 9 dígitos sozinho.
+        phone: editForm.phone.trim() || null,
+        companyName: editForm.companyName.trim() || null,
+      });
+      toast({ tone: 'success', title: 'Lead atualizado' });
+      setEditOpen(false);
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao atualizar lead', description: extractErrorMessage(err) });
+    }
+  };
 
   const onClose = async (outcome: 'GANHO' | 'PERDIDO') => {
     if (!id) return;
@@ -84,11 +119,14 @@ export function DealDetailPage() {
             <p><span className="text-slate-400">Etapa:</span> {deal.stage.name}</p>
             <p><span className="text-slate-400">Responsável:</span> {deal.owner.name}</p>
             {deal.lead && (
-              <p>
+              <p className="flex items-center gap-1.5">
                 <span className="text-slate-400">Lead:</span>{' '}
                 <Link to={`/crm/leads/${deal.lead.id}`} className="text-brand-300 hover:underline">
                   {deal.lead.name}
                 </Link>
+                <button type="button" onClick={onOpenEdit} className="text-slate-400 hover:text-brand-300" title="Editar nome, e-mail, telefone e empresa deste lead">
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
               </p>
             )}
             {deal.expectedCloseDate && (
@@ -144,6 +182,39 @@ export function DealDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {deal.lead && (
+        <Dialog open={editOpen} onClose={() => setEditOpen(false)} title="Editar lead">
+          <form onSubmit={onSaveEdit} className="space-y-4">
+            <div>
+              <Label>Nome</Label>
+              <Input required value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div>
+              <Label>E-mail</Label>
+              <Input type="email" value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Telefone</Label>
+              <Input
+                placeholder="Ex.: 44998771425"
+                value={editForm.phone}
+                onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Pode digitar com ou sem +55, com ou sem o 9º dígito — o sistema normaliza sozinho.
+              </p>
+            </div>
+            <div>
+              <Label>Empresa</Label>
+              <Input value={editForm.companyName} onChange={(e) => setEditForm((f) => ({ ...f, companyName: e.target.value }))} />
+            </div>
+            <Button type="submit" className="w-full" loading={updateLead.isPending}>
+              Salvar
+            </Button>
+          </form>
+        </Dialog>
+      )}
     </div>
   );
 }
