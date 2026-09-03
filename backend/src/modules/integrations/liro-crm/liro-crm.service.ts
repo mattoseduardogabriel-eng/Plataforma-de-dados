@@ -508,22 +508,23 @@ export class LiroCrmService {
     const phoneNormalizado = contact.phoneNumber ? normalizePhone(contact.phoneNumber) : null;
 
     // Busca TODOS os leads que batem (pode haver mais de um — dado legado
-    // duplicado, ou um lead antigo achado só pelo fallback de dígitos
-    // finais convivendo com outro mais novo) e escolhe o melhor candidato
-    // nessa ordem: id vinculado do Liro > telefone normalizado exato >
-    // (entre os achados só pelo fallback) o que tiver negócio aberto >
-    // senão o primeiro. Sem essa priorização, `findFirst` podia devolver
-    // um lead "errado" (sem negócio nenhum) mesmo com o certo disponível,
-    // e o evento não movia nada, silenciosamente.
+    // duplicado, ex.: um lead antigo criado manualmente com o negócio de
+    // verdade, e outro criado depois pela sincronização com o telefone já
+    // normalizado mas sem negócio nenhum) e escolhe o melhor candidato.
+    // Prioridade nº 1 é ter um negócio ABERTO — de nada adianta achar um
+    // lead "mais correto" que não tem nada pra mover; só entre os que TÊM
+    // negócio (ou, se nenhum tiver, entre todos) é que desempata por id
+    // vinculado do Liro, depois telefone exato, depois o primeiro.
     const candidatos = await this.prisma.lead.findMany({
       where: { organizationId: org.id, OR: buildPhoneMatchConditions(contact.id, phoneNormalizado) },
       include: { deals: { where: { status: 'ABERTO' }, select: { id: true }, take: 1 } },
     });
+    const comNegocioAberto = candidatos.filter((l) => l.deals.length > 0);
+    const pool = comNegocioAberto.length > 0 ? comNegocioAberto : candidatos;
     const lead =
-      candidatos.find((l) => contact.id && l.liroContactId === contact.id) ??
-      candidatos.find((l) => phoneNormalizado && l.phone === phoneNormalizado) ??
-      candidatos.find((l) => l.deals.length > 0) ??
-      candidatos[0];
+      pool.find((l) => contact.id && l.liroContactId === contact.id) ??
+      pool.find((l) => phoneNormalizado && l.phone === phoneNormalizado) ??
+      pool[0];
 
     if (!lead) {
       this.logger.warn(
