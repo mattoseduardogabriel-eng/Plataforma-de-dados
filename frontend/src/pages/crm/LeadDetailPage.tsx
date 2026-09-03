@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, Spinner, Textarea } from '@/components/ui/primitives';
 import { Dialog } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { useLead, useUpdateLead, useSectors, useCreateSector } from '@/hooks/useCrm';
+import { useLead, useUpdateLead, useMergeLead, useSectors, useCreateSector } from '@/hooks/useCrm';
 import { useCreateActivity } from '@/hooks/useCrm';
 import { useOrgUsers } from '@/hooks/useUsers';
 import { useToast } from '@/components/ui/toast';
@@ -22,6 +22,7 @@ export function LeadDetailPage() {
   const { data: sectors } = useSectors();
   const createActivity = useCreateActivity();
   const updateLead = useUpdateLead();
+  const mergeLead = useMergeLead();
   const createSector = useCreateSector();
   const pushTag = usePushLiroCrmTag();
   const addToFunnel = useAddLeadToFunnel();
@@ -62,6 +63,26 @@ export function LeadDetailPage() {
       setEditOpen(false);
     } catch (err) {
       toast({ tone: 'error', title: 'Erro ao atualizar lead', description: extractErrorMessage(err) });
+    }
+  };
+
+  const [mergePhone, setMergePhone] = useState('');
+  const onMerge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !mergePhone.trim()) return;
+    if (
+      !confirm(
+        `Mesclar com o lead do telefone ${mergePhone}? O outro lead some — negociações e atividades dele passam pra este. Não pode ser desfeito.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await mergeLead.mutateAsync({ id, phone: mergePhone.trim() });
+      toast({ tone: 'success', title: 'Leads mesclados' });
+      setMergePhone('');
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao mesclar leads', description: extractErrorMessage(err) });
     }
   };
 
@@ -253,6 +274,19 @@ export function LeadDetailPage() {
               {lead.liroContactId
                 ? 'Aplica a tag no contato já vinculado.'
                 : 'Sem telefone, o vínculo não pode ser criado.'}
+            </p>
+          </CardContent>
+          <CardContent className="border-t border-slate-300/60 pt-4">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Mesclar com outro lead</p>
+            <form onSubmit={onMerge} className="flex gap-2">
+              <Input placeholder="Telefone do outro lead" value={mergePhone} onChange={(e) => setMergePhone(e.target.value)} />
+              <Button type="submit" size="sm" variant="destructive" loading={mergeLead.isPending}>
+                Mesclar
+              </Button>
+            </form>
+            <p className="mt-1 text-xs text-slate-500">
+              Pra quando o mesmo telefone virou dois leads (dado antigo). O outro lead some — negociações e
+              atividades dele passam pra este.
             </p>
           </CardContent>
         </Card>

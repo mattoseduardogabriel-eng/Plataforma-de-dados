@@ -5,6 +5,7 @@ import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
 import { SaveLeadToWalletDto } from './dto/save-lead-to-wallet.dto';
 import { SaveLeadsToWalletBulkDto } from './dto/save-leads-to-wallet-bulk.dto';
+import { MergeLeadDto } from './dto/merge-lead.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
@@ -68,5 +69,12 @@ export class LeadsController {
   @Post('save-to-wallet/bulk')
   saveManyToWallet(@CurrentUser() user: AuthenticatedUser, @Body() dto: SaveLeadsToWalletBulkDto) {
     return this.leadsService.saveManyToWallet(user.organizationId, dto.items);
+  }
+
+  // Mescla o lead achado pelo telefone informado DENTRO deste (:id) —
+  // resolve duplicata legada (mesmo telefone, dois leads separados).
+  @Post(':id/merge')
+  merge(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: MergeLeadDto) {
+    return this.leadsService.mergeByPhone(user.organizationId, id, dto.phone);
   }
 }
