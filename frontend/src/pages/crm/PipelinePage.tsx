@@ -33,6 +33,21 @@ function retangulosSeCruzam(a: Retangulo, b: Retangulo) {
   return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
 }
 
+// Miniatura customizada pro drag quando é um grupo (mais de 1 selecionado)
+// — sem isso o navegador usa como "fantasma" só o card em que o mouse
+// tocou, o que engana arrastando vários de uma vez. Cria um elemento fora
+// da tela, usa como imagem de drag, e remove logo em seguida (o navegador
+// já copiou a imagem de forma síncrona no dragstart).
+function usarImagemDeArrastoEmGrupo(e: React.DragEvent, quantidade: number) {
+  const el = document.createElement('div');
+  el.textContent = `${quantidade} selecionados`;
+  el.className = 'rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white';
+  el.style.cssText = 'position:fixed;top:-1000px;left:-1000px;';
+  document.body.appendChild(el);
+  e.dataTransfer.setDragImage(el, 16, 16);
+  setTimeout(() => document.body.removeChild(el), 0);
+}
+
 export function PipelinePage() {
   const { data: pipelines, isLoading: loadingPipelines } = usePipelines();
   const pipeline = pipelines?.[0];
@@ -53,6 +68,7 @@ export function PipelinePage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ title: '', value: '', productPlan: '', stageId: '', contactName: '', contactPhone: '', contactDocument: '' });
   const [dragDealId, setDragDealId] = useState<string | null>(null);
+  const [dragGrupo, setDragGrupo] = useState(false); // true = arrastando toda a seleção junto, não só um card
   const [novaEtapaAberta, setNovaEtapaAberta] = useState(false);
   const [novaEtapaNome, setNovaEtapaNome] = useState('');
 
@@ -213,6 +229,12 @@ export function PipelinePage() {
   };
 
   const onDrop = async (stageId: string) => {
+    if (dragGrupo) {
+      await moverSelecionadosPara(stageId);
+      setDragDealId(null);
+      setDragGrupo(false);
+      return;
+    }
     if (!dragDealId) return;
     try {
       await moveDeal.mutateAsync({ id: dragDealId, stageId });
@@ -309,12 +331,28 @@ export function PipelinePage() {
                       else cardRefs.current.delete(deal.id);
                     }}
                     draggable
-                    onDragStart={() => setDragDealId(deal.id)}
+                    onDragStart={(e) => {
+                      // Arrastar um card que já faz parte da seleção (2+) leva o
+                      // grupo inteiro junto; arrastar um card fora da seleção
+                      // arrasta só ele (e limpa a seleção antiga, pra não sobrar
+                      // destaque de algo que não foi movido).
+                      if (selecionado && selecionados.size > 1) {
+                        setDragGrupo(true);
+                        usarImagemDeArrastoEmGrupo(e, selecionados.size);
+                      } else {
+                        setSelecionados(new Set());
+                      }
+                      setDragDealId(deal.id);
+                    }}
+                    onDragEnd={() => {
+                      setDragDealId(null);
+                      setDragGrupo(false);
+                    }}
                     onClick={() => navigate(`/crm/deals/${deal.id}`)}
-                    title="Clique pra abrir · arraste pra mudar de etapa · clique num espaço vazio e arraste pra selecionar vários"
+                    title="Clique pra abrir · arraste pra mudar de etapa · clique num espaço vazio e arraste pra selecionar vários (e depois arraste o grupo junto)"
                     className={cn(
                       'cursor-grab rounded-xl border border-slate-200 bg-slate-100 p-3 shadow-card active:cursor-grabbing',
-                      dragDealId === deal.id && 'opacity-50',
+                      (dragDealId === deal.id || (dragGrupo && selecionado)) && 'opacity-50',
                       selecionado && 'border-brand-400 ring-2 ring-brand-300',
                     )}
                   >
