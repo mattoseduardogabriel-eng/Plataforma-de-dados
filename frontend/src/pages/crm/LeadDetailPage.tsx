@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Plus, Search, Users2 } from 'lucide-react';
+import { Pencil, Plus, Search, Users2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select, Spinner, Textarea } from '@/components/ui/primitives';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, Spinner, Textarea } from '@/components/ui/primitives';
+import { Dialog } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { useLead, useUpdateLead, useSectors, useCreateSector } from '@/hooks/useCrm';
 import { useCreateActivity } from '@/hooks/useCrm';
@@ -30,6 +31,39 @@ export function LeadDetailPage() {
   const [activity, setActivity] = useState({ type: 'LIGACAO' as ActivityType, title: '', notes: '' });
   const [tagName, setTagName] = useState('');
   const [newSectorName, setNewSectorName] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', companyName: '' });
+
+  const onOpenEdit = () => {
+    setEditForm({
+      name: lead?.name ?? '',
+      email: lead?.email ?? '',
+      phone: lead?.phone ?? '',
+      companyName: lead?.companyName ?? '',
+    });
+    setEditOpen(true);
+  };
+
+  const onSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id) return;
+    try {
+      await updateLead.mutateAsync({
+        id,
+        name: editForm.name.trim(),
+        email: editForm.email.trim() || null,
+        // O back-end normaliza pro padrão 55 + DDD + 9 dígitos sozinho —
+        // não precisa digitar formatado, só o número (com ou sem DDI/9º
+        // dígito, que o próprio sistema completa).
+        phone: editForm.phone.trim() || null,
+        companyName: editForm.companyName.trim() || null,
+      });
+      toast({ tone: 'success', title: 'Lead atualizado' });
+      setEditOpen(false);
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao atualizar lead', description: extractErrorMessage(err) });
+    }
+  };
 
   const onOpenLiro = async () => {
     const result = await openLiroCrmConversation(lead?.phone);
@@ -163,6 +197,14 @@ export function LeadDetailPage() {
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle>Dados do lead</CardTitle>
+            <button
+              type="button"
+              onClick={onOpenEdit}
+              className="text-slate-400 hover:text-brand-300"
+              title="Editar nome, e-mail, telefone e empresa"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p><span className="text-slate-400">Status:</span> <Badge tone="info">{lead.status}</Badge></p>
@@ -359,6 +401,37 @@ export function LeadDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={editOpen} onClose={() => setEditOpen(false)} title="Editar lead">
+        <form onSubmit={onSaveEdit} className="space-y-4">
+          <div>
+            <Label>Nome</Label>
+            <Input required value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+          </div>
+          <div>
+            <Label>E-mail</Label>
+            <Input type="email" value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} />
+          </div>
+          <div>
+            <Label>Telefone</Label>
+            <Input
+              placeholder="Ex.: 44998771425"
+              value={editForm.phone}
+              onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Pode digitar com ou sem +55, com ou sem o 9º dígito — o sistema normaliza sozinho.
+            </p>
+          </div>
+          <div>
+            <Label>Empresa</Label>
+            <Input value={editForm.companyName} onChange={(e) => setEditForm((f) => ({ ...f, companyName: e.target.value }))} />
+          </div>
+          <Button type="submit" className="w-full" loading={updateLead.isPending}>
+            Salvar
+          </Button>
+        </form>
+      </Dialog>
     </div>
   );
 }
