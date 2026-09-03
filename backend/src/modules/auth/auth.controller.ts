@@ -16,6 +16,7 @@ import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { RegisterOrganizationDto } from './dto/register-organization.dto';
 import { LoginDto } from './dto/login.dto';
+import { LoginTwoFactorDto } from './dto/login-two-factor.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
@@ -58,7 +59,27 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
-    const { refreshToken, ...result } = await this.authService.login(dto);
+    const outcome = await this.authService.login(dto);
+    // 2FA ligado: nenhum token de acesso ainda, só o pendingToken pra
+    // completar em POST /auth/login/2fa — não seta cookie de refresh
+    // nenhum até o segundo fator ser confirmado.
+    if ('twoFactorRequired' in outcome) {
+      return outcome;
+    }
+    const { refreshToken, ...result } = outcome;
+    this.setRefreshCookie(res, refreshToken);
+    return result;
+  }
+
+  // Segunda etapa do login pra quem tem 2FA ligado — mesmo throttle do
+  // /login normal: um código de 6 dígitos sem rate limit seria
+  // força-bruta-ável em minutos.
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 900000 } })
+  @Post('login/2fa')
+  @HttpCode(HttpStatus.OK)
+  async loginTwoFactor(@Body() dto: LoginTwoFactorDto, @Res({ passthrough: true }) res: Response) {
+    const { refreshToken, ...result } = await this.authService.loginTwoFactor(dto.pendingToken, dto.token);
     this.setRefreshCookie(res, refreshToken);
     return result;
   }

@@ -23,6 +23,7 @@ import { BackofficeModule } from './modules/backoffice/backoffice.module';
 import { FeaturesModule } from './modules/features/features.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { HealthModule } from './modules/health/health.module';
+import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { HealthModule } from './modules/health/health.module';
     HealthModule,
     AuditModule,
     AuthModule,
+    TwoFactorModule,
     UsersModule,
     OrganizationsModule,
     RealtimeModule,

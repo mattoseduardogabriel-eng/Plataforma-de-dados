@@ -13,6 +13,7 @@ import { LiroCrmIntegrationCard } from './LiroCrmIntegrationCard';
 import { PersonalDataProviderCard } from './PersonalDataProviderCard';
 import { FeaturesSettingsCard } from './FeaturesSettingsCard';
 import { SubscriptionCard } from './SubscriptionCard';
+import { TwoFactorCard } from './TwoFactorCard';
 import type { Role, User } from '@/types';
 
 const ROLES: Role[] = ['ADMIN', 'GESTOR', 'VENDEDOR', 'FINANCEIRO', 'ATENDIMENTO', 'ANALISTA'];
@@ -112,6 +113,7 @@ export function SettingsPage() {
           <TabsTrigger value="usuarios">Usuários</TabsTrigger>
           {canManageFeatures && <TabsTrigger value="ferramentas">Ferramentas</TabsTrigger>}
           <TabsTrigger value="integracoes">Integrações</TabsTrigger>
+          {canManageFeatures && <TabsTrigger value="seguranca">Segurança</TabsTrigger>}
         </TabsList>
       </Tabs>
 
@@ -215,6 +217,8 @@ export function SettingsPage() {
           <LiroCrmIntegrationCard isAdmin={isAdmin} />
         </div>
       )}
+
+      {tab === 'seguranca' && canManageFeatures && <TwoFactorCard />}
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title="Novo usuário">
         <form onSubmit={onCreateUser} className="space-y-4">

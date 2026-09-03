@@ -194,6 +194,13 @@ model User {
   active              Boolean  @default(true)
   hashedRefreshToken  String?
   tokenVersion        Int      @default(0)
+  // 2FA (TOTP) — só ADMIN/GESTOR podem ativar (ver TwoFactorController).
+  // Segredo cifrado (mesmo SecretCipher usado nas credenciais do Liro
+  // CRM) desde que é gerado; twoFactorEnabled só vira true depois de
+  // confirmar um código válido — gerar o QR sozinho não liga a exigência,
+  // assim ninguém fica trancado pra fora por gerar e nunca confirmar.
+  twoFactorSecret     String?
+  twoFactorEnabled    Boolean  @default(false)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
