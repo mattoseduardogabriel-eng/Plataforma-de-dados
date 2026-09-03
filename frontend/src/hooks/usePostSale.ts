@@ -88,6 +88,25 @@ export function useUpdateCustomer() {
   });
 }
 
+/** Exclui os clientes cujos ids forem passados — serve tanto pra seleção manual quanto pra "selecionar todos os filtrados". */
+export function useDeleteCustomers() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) =>
+      (await api.delete<{ deleted: number }>('/post-sale/customers', { data: { ids } })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['post-sale', 'customers'] }),
+  });
+}
+
+/** Apaga a carteira de clientes inteira da organização — ação destrutiva, sem filtro. */
+export function useDeleteAllCustomers() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => (await api.delete<{ deleted: number }>('/post-sale/customers/all')).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['post-sale', 'customers'] }),
+  });
+}
+
 export interface ImportCustomersResult {
   created: number;
   updated: number;

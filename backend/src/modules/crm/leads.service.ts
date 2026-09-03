@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
+import { normalizePhone } from '../../common/utils/phone.util';
 
 export type SaveToWalletResultado =
   | { leadId: string; status: 'criado'; customerId: string }
@@ -79,6 +80,36 @@ export class LeadsService {
     });
     if (!lead) {
       throw new NotFoundException('Lead não encontrado.');
+    }
+    return lead;
+  }
+
+  /**
+   * Acha o lead pelo telefone — usado pelo deep-link "abrir no Aster"
+   * clicado de dentro de uma conversa do Liro CRM. Normaliza antes de
+   * comparar (mesmo padrão usado na sincronização) pra achar mesmo que o
+   * telefone tenha sido salvo num formato ligeiramente diferente aqui.
+   * Quando mais de um lead bate (não deveria, mas dado legado pode
+   * duplicar), devolve o mais recente.
+   */
+  async findByPhone(organizationId: string, phone: string | undefined) {
+    if (!phone) {
+      throw new NotFoundException('Informe um telefone para buscar.');
+    }
+    const normalized = normalizePhone(phone) ?? phone;
+    const digits = phone.replace(/\D/g, '');
+    const orConditions: Prisma.LeadWhereInput[] = [{ phone: normalized }];
+    if (digits) orConditions.push({ phone: { contains: digits } });
+    const lead = await this.prisma.lead.findFirst({
+      where: {
+        organizationId,
+        OR: orConditions,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (!lead) {
+      throw new NotFoundException('Nenhum lead encontrado com esse telefone.');
     }
     return lead;
   }

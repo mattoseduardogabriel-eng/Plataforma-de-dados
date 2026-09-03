@@ -1,11 +1,18 @@
-import { useState } from 'react';
-import { Plus, Settings2, ShieldAlert, Upload, Users2, Wallet } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Plus, Settings2, ShieldAlert, Trash2, Upload, Users2, Wallet } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, Input, Label, Spinner, Badge, EmptyState, StatCard } from '@/components/ui/primitives';
-import { Table, Thead, Tbody, Tr, Td } from '@/components/ui/table';
+import { Table, Thead, Tbody, Tr, Td, Th } from '@/components/ui/table';
 import { ColumnFilterHeader } from '@/components/ui/column-filter-header';
 import { Dialog } from '@/components/ui/dialog';
-import { useCustomers, useCreateCustomer, usePortfolioOverview, useCustomerFieldDefinitions } from '@/hooks/usePostSale';
+import {
+  useCustomers,
+  useCreateCustomer,
+  usePortfolioOverview,
+  useCustomerFieldDefinitions,
+  useDeleteCustomers,
+  useDeleteAllCustomers,
+} from '@/hooks/usePostSale';
 import { useToast } from '@/components/ui/toast';
 import { useAuth, extractErrorMessage } from '@/lib/auth-context';
 import { formatCurrency, formatDocument } from '@/lib/utils';
@@ -48,6 +55,8 @@ interface SortState {
 export function CustomersPage() {
   const { user } = useAuth();
   const canManageFields = user?.role === 'ADMIN' || user?.role === 'GESTOR';
+  // Mesmos papéis liberados pra excluir no back-end (ver customers.controller.ts) — evita mostrar um botão que só vai dar 403.
+  const canDelete = user?.role === 'ADMIN' || user?.role === 'GESTOR';
 
   const { data: fieldDefinitions } = useCustomerFieldDefinitions();
 
@@ -67,6 +76,8 @@ export function CustomersPage() {
   });
   const { data: portfolio } = usePortfolioOverview();
   const createCustomer = useCreateCustomer();
+  const deleteCustomers = useDeleteCustomers();
+  const deleteAllCustomers = useDeleteAllCustomers();
   const { toast } = useToast();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -74,6 +85,58 @@ export function CustomersPage() {
   const [fieldsOpen, setFieldsOpen] = useState(false);
   const [quickViewId, setQuickViewId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', document: '', email: '', phone: '', city: '', planName: '', monthlyValue: '' });
+
+  // Seleção de linhas — sempre em cima do resultado já filtrado (`customers`),
+  // então "selecionar tudo" já pega todos os filtrados no momento, não só o
+  // que está visível na tela. Some ao trocar filtro/ordenação pra nunca
+  // carregar uma seleção que não corresponde mais ao que está na tela.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [textFilters, statusFilter, riskFilter, customFieldFilters, sort]);
+
+  const [confirmDeleteSelectedOpen, setConfirmDeleteSelectedOpen] = useState(false);
+  const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = useState(false);
+  const [deleteAllConfirmText, setDeleteAllConfirmText] = useState('');
+
+  const allFilteredIds = customers?.map((c) => c.id) ?? [];
+  const allSelected = allFilteredIds.length > 0 && selectedIds.size === allFilteredIds.length;
+  const someSelected = selectedIds.size > 0 && !allSelected;
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(allFilteredIds));
+  };
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const onDeleteSelected = async () => {
+    try {
+      const { deleted } = await deleteCustomers.mutateAsync(Array.from(selectedIds));
+      toast({ tone: 'success', title: `${deleted} cliente(s) excluído(s)` });
+      setSelectedIds(new Set());
+      setConfirmDeleteSelectedOpen(false);
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao excluir clientes', description: extractErrorMessage(err) });
+    }
+  };
+
+  const onDeleteAll = async () => {
+    try {
+      const { deleted } = await deleteAllCustomers.mutateAsync();
+      toast({ tone: 'success', title: `Carteira apagada`, description: `${deleted} cliente(s) excluído(s).` });
+      setSelectedIds(new Set());
+      setConfirmDeleteAllOpen(false);
+      setDeleteAllConfirmText('');
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao excluir a carteira', description: extractErrorMessage(err) });
+    }
+  };
 
   const activeCount = portfolio?.byStatus.find((s) => s.status === 'ATIVO')?.count ?? 0;
   const riskAlto = portfolio?.byRisk.find((r) => r.level === 'ALTO')?.count ?? 0;
@@ -114,12 +177,34 @@ export function CustomersPage() {
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <Upload className="h-4 w-4" /> Importar planilha
             </Button>
+            {canDelete && (
+              <Button variant="destructive" onClick={() => setConfirmDeleteAllOpen(true)}>
+                <Trash2 className="h-4 w-4" /> Excluir base toda
+              </Button>
+            )}
             <Button onClick={() => setDialogOpen(true)}>
               <Plus className="h-4 w-4" /> Novo cliente
             </Button>
           </div>
         }
       />
+
+      {canDelete && selectedIds.size > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-brand-300 bg-brand-50 px-4 py-2.5 text-sm">
+          <span className="font-medium text-slate-700">
+            {selectedIds.size} selecionado{selectedIds.size > 1 ? 's' : ''}
+            {allFilteredIds.length > selectedIds.size ? ` de ${allFilteredIds.length} filtrados` : ''}
+          </span>
+          {allFilteredIds.length > selectedIds.size && (
+            <button type="button" className="text-brand-600 underline hover:text-brand-500" onClick={toggleSelectAll}>
+              Selecionar todos os {allFilteredIds.length} filtrados
+            </button>
+          )}
+          <Button variant="destructive" size="sm" className="ml-auto" onClick={() => setConfirmDeleteSelectedOpen(true)}>
+            <Trash2 className="h-4 w-4" /> Excluir selecionados
+          </Button>
+        </div>
+      )}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard label="Clientes ativos" value={String(activeCount)} icon={<Users2 className="h-4 w-4" />} />
@@ -143,6 +228,19 @@ export function CustomersPage() {
         <Table>
           <Thead>
             <Tr>
+              {canDelete && (
+                <Th className="w-10">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someSelected;
+                    }}
+                    onChange={toggleSelectAll}
+                    aria-label="Selecionar todos os clientes filtrados"
+                  />
+                </Th>
+              )}
               <ColumnFilterHeader
                 label="Nome"
                 {...sortProps('name')}
@@ -206,13 +304,23 @@ export function CustomersPage() {
           <Tbody>
             {!customers?.length && (
               <Tr className="hover:bg-transparent">
-                <Td colSpan={7 + (fieldDefinitions?.length ?? 0)} className="py-10 text-center">
+                <Td colSpan={7 + (canDelete ? 1 : 0) + (fieldDefinitions?.length ?? 0)} className="py-10 text-center">
                   <EmptyState title="Nenhum cliente encontrado" description="Ajuste os filtros nas colunas acima, ou cadastre/importe clientes." />
                 </Td>
               </Tr>
             )}
             {customers?.map((c) => (
               <Tr key={c.id} className="cursor-pointer" onClick={() => setQuickViewId(c.id)}>
+                {canDelete && (
+                  <Td onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(c.id)}
+                      onChange={() => toggleSelectOne(c.id)}
+                      aria-label={`Selecionar ${c.name}`}
+                    />
+                  </Td>
+                )}
                 <Td className="font-medium text-slate-900">{c.name}</Td>
                 <Td>{formatDocument(c.document)}</Td>
                 <Td>{c.city ?? '—'}</Td>
@@ -283,6 +391,64 @@ export function CustomersPage() {
       <CustomerQuickViewModal customerId={quickViewId} onClose={() => setQuickViewId(null)} />
       <ImportCustomersDialog open={importOpen} onClose={() => setImportOpen(false)} />
       {canManageFields && <ManageCustomerFieldsDialog open={fieldsOpen} onClose={() => setFieldsOpen(false)} />}
+
+      <Dialog open={confirmDeleteSelectedOpen} onClose={() => setConfirmDeleteSelectedOpen(false)} title="Excluir clientes selecionados">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Tem certeza que quer excluir <strong>{selectedIds.size}</strong> cliente(s)? Contratos, histórico de
+            atendimento e sinais de churn desses clientes também são apagados. Essa ação não pode ser desfeita.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setConfirmDeleteSelectedOpen(false)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={onDeleteSelected} loading={deleteCustomers.isPending}>
+              <Trash2 className="h-4 w-4" /> Excluir {selectedIds.size} cliente(s)
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={confirmDeleteAllOpen}
+        onClose={() => {
+          setConfirmDeleteAllOpen(false);
+          setDeleteAllConfirmText('');
+        }}
+        title="Excluir toda a Carteira de Clientes"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Isso apaga <strong>todos</strong> os clientes desta organização — incluindo os que não aparecem no filtro
+            atual — junto com contratos, histórico de atendimento e sinais de churn. <strong>Não pode ser desfeito.</strong>
+          </p>
+          <div>
+            <Label>
+              Pra confirmar, digite <strong>EXCLUIR</strong> abaixo
+            </Label>
+            <Input value={deleteAllConfirmText} onChange={(e) => setDeleteAllConfirmText(e.target.value)} placeholder="EXCLUIR" />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setConfirmDeleteAllOpen(false);
+                setDeleteAllConfirmText('');
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={onDeleteAll}
+              disabled={deleteAllConfirmText !== 'EXCLUIR'}
+              loading={deleteAllCustomers.isPending}
+            >
+              <Trash2 className="h-4 w-4" /> Excluir base toda
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

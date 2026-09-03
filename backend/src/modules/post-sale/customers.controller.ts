@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { ImportCustomersDto } from './dto/import-customers.dto';
+import { BulkDeleteCustomersDto } from './dto/bulk-delete-customers.dto';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { Role } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -52,6 +53,20 @@ export class CustomersController {
       sortDir: sortDir as any,
       search,
     });
+  }
+
+  // Rotas fixas (/all, exclusão em massa) precisam vir antes de ':id' —
+  // senão o Nest casa "all" como se fosse um id de cliente.
+  @Roles(Role.ADMIN, Role.GESTOR)
+  @Delete('all')
+  deleteAll(@CurrentUser() user: AuthenticatedUser) {
+    return this.customersService.deleteAll(user.organizationId, user.id);
+  }
+
+  @Roles(Role.ADMIN, Role.GESTOR)
+  @Delete()
+  deleteMany(@CurrentUser() user: AuthenticatedUser, @Body() dto: BulkDeleteCustomersDto) {
+    return this.customersService.deleteMany(user.organizationId, user.id, dto.ids);
   }
 
   @Get(':id')

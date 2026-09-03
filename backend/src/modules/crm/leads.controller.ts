@@ -29,6 +29,14 @@ export class LeadsController {
     return this.leadsService.findAll(user.organizationId, { status, assignedToId, search });
   }
 
+  // Rota fixa: precisa vir antes de ':id', senão o Nest casa "by-phone"
+  // como se fosse um id de lead. Usada pelo deep-link "Abrir no Aster"
+  // clicado de dentro de uma conversa do Liro CRM.
+  @Get('by-phone')
+  findByPhone(@CurrentUser() user: AuthenticatedUser, @Query('phone') phone: string) {
+    return this.leadsService.findByPhone(user.organizationId, phone);
+  }
+
   @Get(':id')
   findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.leadsService.findOne(user.organizationId, id);

@@ -198,4 +198,48 @@ export class CustomersService {
       },
     });
   }
+
+  /**
+   * Exclusão em massa por lista de ids — usada tanto pra exclusão manual
+   * (seleção de linhas na tela) quanto pra "selecionar todos os filtrados
+   * e excluir" (o front já resolve o filtro em ids antes de chamar aqui).
+   * `deleteMany` já é escopado por organizationId, então um id de outra
+   * organização passado por engano simplesmente não é apagado.
+   */
+  async deleteMany(organizationId: string, userId: string, ids: string[]) {
+    const result = await this.prisma.customer.deleteMany({
+      where: { organizationId, id: { in: ids } },
+    });
+
+    await this.auditService.log({
+      organizationId,
+      userId,
+      action: 'CUSTOMERS_DELETED',
+      entityType: 'Customer',
+      metadata: { requested: ids.length, deleted: result.count },
+    });
+
+    return { deleted: result.count };
+  }
+
+  /**
+   * Apaga TODA a carteira de clientes da organização — ação destrutiva e
+   * irreversível, pensada pra "zerar a base" (ex: antes de reimportar do
+   * zero). Não recebe filtro nenhum de propósito: se a intenção for
+   * excluir só um subconjunto, o caminho é selecionar as linhas filtradas
+   * na tela e usar `deleteMany` acima.
+   */
+  async deleteAll(organizationId: string, userId: string) {
+    const result = await this.prisma.customer.deleteMany({ where: { organizationId } });
+
+    await this.auditService.log({
+      organizationId,
+      userId,
+      action: 'CUSTOMERS_ALL_DELETED',
+      entityType: 'Customer',
+      metadata: { deleted: result.count },
+    });
+
+    return { deleted: result.count };
+  }
 }
