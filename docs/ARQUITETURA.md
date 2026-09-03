@@ -137,3 +137,21 @@ Recharts, React Hook Form.
   ~376KB gzip pra ~105KB gzip. `xlsx` (import de planilha de clientes) e
   `recharts` (gráficos do dashboard) são as duas libs mais pesadas e
   agora só entram em uso pra quem realmente visita essas telas.
+- **Rate limit no login**: `POST /api/auth/login` tem um `@Throttle`
+  próprio (10 tentativas/15min por IP) além do throttle global
+  (200/60s) — sem isso, o global sozinho permitia ~3 tentativas de senha
+  por segundo, força-bruta-ável.
+- **Dedupe de webhook do Liro**: o Liro reenvia a mesma entrega (corpo
+  byte-a-byte idêntico) até 3 vezes se não receber `2xx` a tempo —
+  `handleInboundWebhook` ignora reentregas repetidas dentro de 10min
+  (hash do token + corpo bruto, em memória), pra não reprocessar o mesmo
+  evento à toa.
+- **Health check**: `GET /api/health` (`HealthModule`, público) confere
+  se o Postgres responde — pra monitoramento externo (UptimeRobot etc)
+  saber que a API está de pé de verdade, não só que o processo Node
+  está rodando.
+- **Retenção de auditoria**: `AuditRetentionScheduler` roda todo dia às
+  3h e apaga `AuditLog` mais antigo que `AUDIT_LOG_RETENTION_DAYS`
+  (padrão 2 anos — deliberadamente conservador, é a base de conformidade
+  LGPD da plataforma; ajustar esse período é decisão de negócio/jurídica,
+  não só técnica).

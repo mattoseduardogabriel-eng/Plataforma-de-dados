@@ -10,6 +10,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
@@ -48,7 +49,12 @@ export class AuthController {
     return this.authService.registerOrganization(dto);
   }
 
+  // Sem isso, só o throttle global (200/60s por IP) valia aqui — folgado
+  // demais pra login (dava pra tentar ~3 senhas por segundo). 10 tentativas
+  // a cada 15min por IP é bem mais apertado, mesmo espírito do loginLimiter
+  // do Liro CRM, sem travar alguém errando a senha algumas vezes.
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 900000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {

@@ -54,6 +54,15 @@ propósito: sem segredo salvo ainda, ou sem o header (Liro desatualizado),
 a entrega é aceita mesmo assim — só loga aviso — pra não quebrar quem já
 estava funcionando antes desse recurso existir.
 
+**Dedupe de reentrega.** O Liro reenvia a mesma entrega (corpo byte-a-byte
+idêntico, com o mesmo `firedAt`) até 3 vezes se não receber `2xx` a tempo
+(ver `dispatch.js`/`enviarUm` no Liro) — sem dedupe, uma reentrega que
+chega depois de já ter sido processada com sucesso (ex: nosso `200` se
+perdeu na volta) reprocessaria o evento do zero. `handleInboundWebhook`
+calcula um hash (`token` + corpo bruto) e ignora entregas repetidas
+dentro de uma janela de 10min (`jaProcessouEssaEntrega`, em memória —
+mesmo padrão do dedupe de mensagem do WhatsApp no Liro).
+
 ## O que a sincronização de contatos faz
 
 `POST /api/integrations/liro-crm/sync` busca contatos alterados desde a

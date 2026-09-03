@@ -66,4 +66,19 @@ export class AuditService {
 
     return { items, total };
   }
+
+  /**
+   * Apaga entrada de auditoria mais antiga que `retentionDays` — chamado
+   * pelo AuditRetentionScheduler. AuditLog é a base de conformidade LGPD
+   * da plataforma (comentário da classe acima), então o padrão do
+   * scheduler é deliberadamente conservador (2 anos) — ajustar o período
+   * de retenção é uma decisão de negócio/jurídica, não só técnica; troque
+   * via AUDIT_LOG_RETENTION_DAYS só depois de confirmar com quem cuida
+   * disso na empresa.
+   */
+  async purgeOldEntries(retentionDays: number): Promise<number> {
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+    const { count } = await this.prisma.auditLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
+    return count;
+  }
 }

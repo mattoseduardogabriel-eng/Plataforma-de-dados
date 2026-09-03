@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { DocumentType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { SecretCipher } from '../../../common/crypto/secret-cipher';
@@ -55,6 +55,29 @@ function buildPhoneMatchConditions(
     if (ultimosDigitos.length === 8) conditions.push({ phone: { endsWith: ultimosDigitos } });
   }
   return conditions;
+}
+
+// Dedupe de entrega de webhook — o Liro CRM reenvia a MESMA entrega (corpo
+// byte-a-byte idêntico, `firedAt` incluso) até 3 vezes se não receber 2xx a
+// tempo (ver dispatch.js/enviarUm no Liro); uma reentrega chegando depois
+// da anterior já ter sido processada com sucesso (ex: nosso 200 se perdeu
+// na volta, mas processamos igual) reprocessaria o evento do zero sem
+// isso. Chave = hash do corpo bruto (mesmo corpo = mesma entrega, byte a
+// byte); em memória, TTL curto — cobre bem o caso real (reentrega chega
+// minutos depois, no máximo), não pretende ser um registro permanente.
+const entregasWebhookVistas = new Map<string, number>(); // hash -> timestamp
+const TTL_DEDUPE_WEBHOOK_MS = 10 * 60 * 1000; // 10 minutos
+
+function jaProcessouEssaEntrega(hash: string): boolean {
+  const agora = Date.now();
+  if (entregasWebhookVistas.size > 5000) {
+    for (const [chave, quando] of entregasWebhookVistas) {
+      if (agora - quando > TTL_DEDUPE_WEBHOOK_MS) entregasWebhookVistas.delete(chave);
+    }
+  }
+  if (entregasWebhookVistas.has(hash)) return true;
+  entregasWebhookVistas.set(hash, agora);
+  return false;
 }
 
 @Injectable()
@@ -562,6 +585,15 @@ export class LiroCrmService {
     }
 
     if (!this.verifyWebhookSignature(org, rawBody, signatureHeader)) {
+      return;
+    }
+
+    // Inclui o token (== a organização) na chave, não só o corpo — dois
+    // eventos de organizações diferentes byte-a-byte idênticos (mesmo
+    // improvável) nunca devem se confundir num dedupe só.
+    const hashEntrega = createHash('sha256').update(`${token}:${rawBody ?? JSON.stringify(payload)}`).digest('hex');
+    if (jaProcessouEssaEntrega(hashEntrega)) {
+      this.logger.warn(`Webhook do Liro CRM (org ${org.id}, evento ${payload.event}): entrega repetida (reentrega do Liro) — já processada, ignorando.`);
       return;
     }
 

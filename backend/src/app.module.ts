@@ -22,6 +22,7 @@ import { PersonalDataProviderModule } from './modules/integrations/personal-data
 import { BackofficeModule } from './modules/backoffice/backoffice.module';
 import { FeaturesModule } from './modules/features/features.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 200 }]),
     PrismaModule,
+    HealthModule,
     AuditModule,
     AuthModule,
     UsersModule,

@@ -37,7 +37,7 @@ describe('LiroCrmService — verificação de assinatura do webhook', () => {
       ...org,
       liroWebhookSigningSecretEncrypted: cipher.encrypt(segredo),
     });
-    const payload = { event: 'conversation_moved', contact: { id: 'c1', phoneNumber: '5544998771425' } };
+    const payload = { event: 'conversation_moved', contact: { id: 'assinatura-ok', phoneNumber: '5544998771425' } };
     const corpo = JSON.stringify(payload);
     const assinatura = `sha256=${createHmac('sha256', segredo).update(corpo).digest('hex')}`;
 
@@ -52,7 +52,7 @@ describe('LiroCrmService — verificação de assinatura do webhook', () => {
       ...org,
       liroWebhookSigningSecretEncrypted: cipher.encrypt('segredo-do-webhook'),
     });
-    const payload = { event: 'conversation_moved', contact: { id: 'c1', phoneNumber: '5544998771425' } };
+    const payload = { event: 'conversation_moved', contact: { id: 'assinatura-forjada', phoneNumber: '5544998771425' } };
     const corpo = JSON.stringify(payload);
 
     await service.handleInboundWebhook('token-abc', payload, corpo, 'sha256=assinatura-forjada-invalida');
@@ -62,7 +62,7 @@ describe('LiroCrmService — verificação de assinatura do webhook', () => {
 
   it('aceita sem verificar quando a organização ainda não tem segredo salvo (compatibilidade)', async () => {
     prisma.organization.findFirst.mockResolvedValue({ ...org, liroWebhookSigningSecretEncrypted: null });
-    const payload = { event: 'conversation_moved', contact: { id: 'c1', phoneNumber: '5544998771425' } };
+    const payload = { event: 'conversation_moved', contact: { id: 'sem-segredo-salvo', phoneNumber: '5544998771425' } };
 
     await service.handleInboundWebhook('token-abc', payload, JSON.stringify(payload), undefined);
 
@@ -74,10 +74,52 @@ describe('LiroCrmService — verificação de assinatura do webhook', () => {
       ...org,
       liroWebhookSigningSecretEncrypted: cipher.encrypt('segredo-do-webhook'),
     });
-    const payload = { event: 'conversation_moved', contact: { id: 'c1', phoneNumber: '5544998771425' } };
+    const payload = { event: 'conversation_moved', contact: { id: 'sem-header', phoneNumber: '5544998771425' } };
 
     await service.handleInboundWebhook('token-abc', payload, JSON.stringify(payload), undefined);
 
     expect(prisma.lead.findMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('LiroCrmService — dedupe de reentrega do webhook', () => {
+  let service: LiroCrmService;
+  let prisma: any;
+  const cipher = new SecretCipher({ get: () => 'chave-de-teste-32-bytes-bem-grande' } as any);
+  const org = { id: 'org-1', liroWebhookToken: 'token-dedupe' };
+
+  beforeEach(() => {
+    prisma = {
+      organization: { findFirst: jest.fn().mockResolvedValue({ ...org, liroWebhookSigningSecretEncrypted: null }) },
+      lead: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    service = new LiroCrmService(
+      prisma,
+      cipher,
+      {} as any,
+      { log: jest.fn() } as any,
+      { get: jest.fn() } as any,
+      { publish: jest.fn() } as any,
+    );
+  });
+
+  it('processa a mesma entrega (mesmo corpo bruto) só uma vez — reentrega é ignorada', async () => {
+    const payload = { event: 'conversation_moved', contact: { id: 'dedupe-1', phoneNumber: '5544998771425' } };
+    const corpo = JSON.stringify(payload);
+
+    await service.handleInboundWebhook('token-dedupe', payload, corpo, undefined);
+    await service.handleInboundWebhook('token-dedupe', payload, corpo, undefined); // reentrega (Liro reenviando)
+
+    expect(prisma.lead.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('processa entregas com corpo diferente normalmente, mesmo do mesmo token', async () => {
+    const payload1 = { event: 'conversation_moved', contact: { id: 'dedupe-2a', phoneNumber: '5544998771425' } };
+    const payload2 = { event: 'conversation_moved', contact: { id: 'dedupe-2b', phoneNumber: '5544998771426' } };
+
+    await service.handleInboundWebhook('token-dedupe', payload1, JSON.stringify(payload1), undefined);
+    await service.handleInboundWebhook('token-dedupe', payload2, JSON.stringify(payload2), undefined);
+
+    expect(prisma.lead.findMany).toHaveBeenCalledTimes(2);
   });
 });
