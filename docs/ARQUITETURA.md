@@ -155,3 +155,13 @@ Recharts, React Hook Form.
   (padrão 2 anos — deliberadamente conservador, é a base de conformidade
   LGPD da plataforma; ajustar esse período é decisão de negócio/jurídica,
   não só técnica).
+- **2FA (TOTP)**: paridade com o Liro CRM, só pra `ADMIN`/`GESTOR`
+  (Configurações → Segurança). TOTP padrão (RFC 6238, 6 dígitos, 30s,
+  `src/common/utils/totp.util.ts`, HOTP validado contra o vetor de teste
+  oficial do RFC), segredo cifrado com o `SecretCipher` já usado nas
+  credenciais do Liro CRM. Com 2FA ligado, `POST /auth/login` devolve
+  `{ twoFactorRequired: true, pendingToken }` em vez do token de acesso;
+  `POST /auth/login/2fa` troca isso + o código pelo token de verdade. O
+  `pendingToken` (5min, mesmo `JWT_ACCESS_SECRET`) nunca dá acesso a rota
+  nenhuma da API sozinho — `JwtStrategy.validate` rejeita explicitamente
+  qualquer payload com `pending2FA`.

@@ -11,6 +11,8 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { RegisterOrganizationDto } from './dto/register-organization.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuditService } from '../audit/audit.service';
+import { SecretCipher } from '../../common/crypto/secret-cipher';
+import * as totp from '../../common/utils/totp.util';
 
 const SALT_ROUNDS = 10;
 
@@ -21,6 +23,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly auditService: AuditService,
+    private readonly cipher: SecretCipher,
   ) {}
 
   private async signTokens(user: {
@@ -176,8 +179,41 @@ export class AuthService {
     return user;
   }
 
+  // Token intermediário de 2FA — carrega só "essa pessoa já provou a
+  // senha, falta o código" (pending2FA: true), curta duração (5min: se
+  // não digitar o código a tempo, refaz o login do zero). Assinado com o
+  // mesmo JWT_ACCESS_SECRET (JwtStrategy.validate rejeita
+  // explicitamente qualquer payload com pending2FA — ver o comentário
+  // lá), então nunca serve pra acessar rota nenhuma da API.
+  private async signPendingTwoFactorToken(userId: string, organizationId: string) {
+    return this.jwtService.signAsync(
+      { sub: userId, organizationId, pending2FA: true },
+      { secret: this.configService.get<string>('JWT_ACCESS_SECRET'), expiresIn: '5m' },
+    );
+  }
+
+  private buildLoginResponse(user: { id: string; name: string; email: string; role: Role; organizationId: string }, tokens: { accessToken: string; refreshToken: string }) {
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        organizationId: user.organizationId,
+      },
+    };
+  }
+
   async login(dto: LoginDto) {
     const user = await this.validateCredentials(dto.email, dto.password);
+
+    // Senha certa, mas 2FA ligado: não entrega o token de acesso ainda —
+    // devolve um token intermediário só pra completar em POST /auth/login/2fa.
+    if (user.twoFactorEnabled) {
+      return { twoFactorRequired: true as const, pendingToken: await this.signPendingTwoFactorToken(user.id, user.organizationId) };
+    }
+
     const tokens = await this.signTokens(user);
     await this.persistRefreshToken(user.id, tokens.refreshToken);
 
@@ -189,16 +225,47 @@ export class AuthService {
       entityId: user.id,
     });
 
-    return {
-      ...tokens,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        organizationId: user.organizationId,
-      },
-    };
+    return this.buildLoginResponse(user, tokens);
+  }
+
+  // Segunda etapa do login quando a conta tem 2FA ligado — troca o token
+  // intermediário (que já prova que a senha estava certa) + o código do
+  // app autenticador pelo token de acesso de verdade.
+  async loginTwoFactor(pendingToken: string, token: string) {
+    let payload: { sub: string; organizationId: string; pending2FA?: boolean };
+    try {
+      payload = await this.jwtService.verifyAsync(pendingToken, {
+        secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
+      });
+    } catch {
+      throw new UnauthorizedException('Sessão de login expirada. Faça login de novo.');
+    }
+    if (!payload.pending2FA) {
+      throw new UnauthorizedException('Token inválido pra essa etapa.');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user || !user.active || !user.twoFactorEnabled || !user.twoFactorSecret) {
+      throw new UnauthorizedException('Credenciais inválidas.');
+    }
+
+    const secret = this.cipher.decrypt(user.twoFactorSecret);
+    if (!totp.verifyToken(secret, token)) {
+      throw new UnauthorizedException('Código inválido ou expirado.');
+    }
+
+    const tokens = await this.signTokens(user);
+    await this.persistRefreshToken(user.id, tokens.refreshToken);
+
+    await this.auditService.log({
+      organizationId: user.organizationId,
+      userId: user.id,
+      action: 'LOGIN',
+      entityType: 'User',
+      entityId: user.id,
+    });
+
+    return this.buildLoginResponse(user, tokens);
   }
 
   private async persistRefreshToken(userId: string, refreshToken: string) {
