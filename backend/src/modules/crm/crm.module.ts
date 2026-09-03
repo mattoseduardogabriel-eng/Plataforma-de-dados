@@ -12,9 +12,10 @@ import { CrmDashboardController } from './crm-dashboard.controller';
 import { SectorsService } from './sectors.service';
 import { SectorsController } from './sectors.controller';
 import { LiroCrmModule } from '../integrations/liro-crm/liro-crm.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [LiroCrmModule],
+  imports: [LiroCrmModule, AuditModule],
   controllers: [
     PipelinesController,
     LeadsController,
