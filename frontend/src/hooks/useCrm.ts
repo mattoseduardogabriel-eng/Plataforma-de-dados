@@ -168,6 +168,39 @@ export function useMoveDeal() {
   });
 }
 
+/**
+ * Move várias negociações pra uma mesma etapa de uma vez (seleção em
+ * retângulo no Funil de Vendas) — chama a MESMA rota de mover uma por uma
+ * (`PATCH /crm/deals/:id/move`), em vez de reimplementar a lógica de
+ * mover no back-end: assim cada negócio passa exatamente pelas mesmas
+ * regras de sempre (virar cliente se cair numa etapa "Ganho", refletir no
+ * Liro CRM, etc.), sem duplicar esse comportamento numa rota em lote.
+ */
+export function useMoveDeals() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, stageId }: { ids: string[]; stageId: string }) => {
+      const resultados = await Promise.allSettled(ids.map((id) => api.patch(`/crm/deals/${id}/move`, { stageId })));
+      const falhas = resultados.filter((r) => r.status === 'rejected').length;
+      return { total: ids.length, falhas };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crm', 'deals'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'dashboard'] });
+      qc.invalidateQueries({ queryKey: ['post-sale'] });
+    },
+  });
+}
+
+/** Remove várias negociações do Funil de Vendas de uma vez — o Lead de origem não é apagado. */
+export function useRemoveDeals() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) => (await api.delete<{ removed: number }>('/crm/deals', { data: { ids } })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm', 'deals'] }),
+  });
+}
+
 export function useCloseDeal() {
   const qc = useQueryClient();
   return useMutation({

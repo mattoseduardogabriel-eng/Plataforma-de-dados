@@ -1,21 +1,45 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { Button, Card, Input, Label, Select, Spinner, Badge } from '@/components/ui/primitives';
+import { Button, Input, Label, Select, Spinner, Badge } from '@/components/ui/primitives';
 import { Dialog } from '@/components/ui/dialog';
-import { usePipelines, useDeals, useCreateDeal, useMoveDeal, useCreatePipelineStage, useDeletePipelineStage } from '@/hooks/useCrm';
+import {
+  usePipelines,
+  useDeals,
+  useCreateDeal,
+  useMoveDeal,
+  useMoveDeals,
+  useRemoveDeals,
+  useCreatePipelineStage,
+  useDeletePipelineStage,
+} from '@/hooks/useCrm';
 import { useLiroCrmStatus, useSyncLiroCrmContacts } from '@/hooks/useIntegrations';
 import { useToast } from '@/components/ui/toast';
 import { extractErrorMessage, useAuth } from '@/lib/auth-context';
 import { cn, formatCurrency } from '@/lib/utils';
 import type { Deal } from '@/types';
 
+interface Retangulo {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+// Dois retângulos se cruzam se não existir um eixo em que um esteja
+// inteiramente antes do outro.
+function retangulosSeCruzam(a: Retangulo, b: Retangulo) {
+  return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+}
+
 export function PipelinePage() {
   const { data: pipelines, isLoading: loadingPipelines } = usePipelines();
   const pipeline = pipelines?.[0];
   const { data: deals, isLoading: loadingDeals, isFetching: fetchingDeals, refetch: refetchDeals } = useDeals({ pipelineId: pipeline?.id, status: 'ABERTO' });
   const moveDeal = useMoveDeal();
+  const moveDeals = useMoveDeals();
+  const removeDeals = useRemoveDeals();
   const createDeal = useCreateDeal();
   const createStage = useCreatePipelineStage();
   const deleteStage = useDeletePipelineStage();
@@ -32,6 +56,51 @@ export function PipelinePage() {
   const [novaEtapaAberta, setNovaEtapaAberta] = useState(false);
   const [novaEtapaNome, setNovaEtapaNome] = useState('');
 
+  // Seleção múltipla por retângulo — clicar num espaço vazio do quadro e
+  // arrastar o mouse, tipo selecionar ícones na área de trabalho — pra
+  // mover ou remover vários negócios do funil de uma vez. Só começa o
+  // retângulo quando o clique inicial NÃO é em cima de um card/botão/input,
+  // então não interfere no drag individual de um card (que continua igual).
+  const [selecionados, setSelecionados] = useState<Set<string>>(() => new Set());
+  const [marquee, setMarquee] = useState<{ startX: number; startY: number; curX: number; curY: number } | null>(null);
+  const cardRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const [etapaDestinoBulk, setEtapaDestinoBulk] = useState('');
+
+  function iniciarSelecaoPorRetangulo(e: React.MouseEvent) {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('[data-kanban-card], button, input, form, select')) return;
+    setSelecionados(new Set());
+    const inicio = { startX: e.clientX, startY: e.clientY, curX: e.clientX, curY: e.clientY };
+    setMarquee(inicio);
+
+    function aoMover(ev: MouseEvent) {
+      const atual = { ...inicio, curX: ev.clientX, curY: ev.clientY };
+      setMarquee(atual);
+      const retSelecao: Retangulo = {
+        left: Math.min(atual.startX, atual.curX),
+        right: Math.max(atual.startX, atual.curX),
+        top: Math.min(atual.startY, atual.curY),
+        bottom: Math.max(atual.startY, atual.curY),
+      };
+      const novos = new Set<string>();
+      for (const [id, el] of cardRefs.current) {
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (retangulosSeCruzam(retSelecao, { left: r.left, right: r.right, top: r.top, bottom: r.bottom })) {
+          novos.add(id);
+        }
+      }
+      setSelecionados(novos);
+    }
+    function aoSoltar() {
+      window.removeEventListener('mousemove', aoMover);
+      window.removeEventListener('mouseup', aoSoltar);
+      setMarquee(null);
+    }
+    window.addEventListener('mousemove', aoMover);
+    window.addEventListener('mouseup', aoSoltar);
+  }
+
   const dealsByStage = useMemo(() => {
     const map: Record<string, Deal[]> = {};
     for (const deal of deals ?? []) {
@@ -40,6 +109,43 @@ export function PipelinePage() {
     }
     return map;
   }, [deals]);
+
+  // Se a lista atualiza (poll automático, ou alguém moveu/fechou por fora)
+  // e um negócio selecionado sumiu, tira ele da seleção.
+  useEffect(() => {
+    setSelecionados((prev) => {
+      const validos = new Set([...prev].filter((id) => deals?.some((d) => d.id === id)));
+      return validos.size === prev.size ? prev : validos;
+    });
+  }, [deals]);
+
+  const moverSelecionadosPara = async (stageId: string) => {
+    if (!stageId || selecionados.size === 0) return;
+    const ids = [...selecionados];
+    try {
+      const { falhas } = await moveDeals.mutateAsync({ ids, stageId });
+      if (falhas > 0) toast({ tone: 'error', title: `${falhas} de ${ids.length} não puderam ser movidos` });
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao mover negociações', description: extractErrorMessage(err) });
+    } finally {
+      setSelecionados(new Set());
+      setEtapaDestinoBulk('');
+    }
+  };
+
+  const removerSelecionadosDoFunil = async () => {
+    if (selecionados.size === 0) return;
+    if (!confirm(`Remover ${selecionados.size} negociação(ões) selecionada(s) do Funil de Vendas? O lead continua existindo, só sai do funil.`)) return;
+    const ids = [...selecionados];
+    try {
+      await removeDeals.mutateAsync(ids);
+      toast({ tone: 'success', title: `${ids.length} negociação(ões) removida(s) do funil` });
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao remover negociações', description: extractErrorMessage(err) });
+    } finally {
+      setSelecionados(new Set());
+    }
+  };
 
   const openDialog = (stageId: string) => {
     setForm({ title: '', value: '', productPlan: '', stageId, contactName: '', contactPhone: '', contactDocument: '' });
@@ -129,14 +235,40 @@ export function PipelinePage() {
     <div>
       <PageHeader
         title="Funil de Vendas"
-        description="Arraste os cards entre as etapas para atualizar o status"
+        description="Arraste um card pra mudar de etapa, ou clique num espaço vazio e arraste o mouse pra selecionar vários"
         actions={
           <Button size="sm" variant="outline" onClick={onAtualizar} loading={fetchingDeals || syncLiro.isPending}>
             <RefreshCw className="h-4 w-4" /> Atualizar
           </Button>
         }
       />
-      <div className="flex gap-4 overflow-x-auto pb-4">
+
+      {selecionados.size > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-brand-300 bg-brand-50 px-4 py-2.5 text-sm">
+          <strong className="font-medium text-slate-700">
+            {selecionados.size} selecionado{selecionados.size > 1 ? 's' : ''}
+          </strong>
+          <Select value={etapaDestinoBulk} onChange={(e) => setEtapaDestinoBulk(e.target.value)} className="h-8 w-auto text-sm">
+            <option value="">Mover para...</option>
+            {pipeline?.stages.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+          <Button size="sm" onClick={() => moverSelecionadosPara(etapaDestinoBulk)} disabled={!etapaDestinoBulk} loading={moveDeals.isPending}>
+            Mover
+          </Button>
+          <Button size="sm" variant="destructive" onClick={removerSelecionadosDoFunil} loading={removeDeals.isPending}>
+            <Trash2 className="h-4 w-4" /> Remover do funil
+          </Button>
+          <button type="button" className="ml-auto text-slate-500 underline hover:text-slate-700" onClick={() => setSelecionados(new Set())}>
+            Limpar seleção
+          </button>
+        </div>
+      )}
+
+      <div className="flex gap-4 overflow-x-auto pb-4" onMouseDown={iniciarSelecaoPorRetangulo}>
         {pipeline?.stages.map((stage) => (
           <div
             key={stage.id}
@@ -166,25 +298,35 @@ export function PipelinePage() {
               </div>
             </div>
             <div className="flex flex-1 flex-col gap-2">
-              {(dealsByStage[stage.id] ?? []).map((deal) => (
-                <Card
-                  key={deal.id}
-                  draggable
-                  onDragStart={() => setDragDealId(deal.id)}
-                  onClick={() => navigate(`/crm/deals/${deal.id}`)}
-                  className={cn(
-                    'cursor-grab p-3 active:cursor-grabbing',
-                    dragDealId === deal.id && 'opacity-50',
-                  )}
-                >
-                  <p className="text-sm font-medium text-slate-900">{deal.title}</p>
-                  {deal.productPlan && <p className="mt-0.5 text-xs text-slate-500">{deal.productPlan}</p>}
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-brand-300">{formatCurrency(deal.value)}</span>
-                    <span className="text-xs text-slate-400">{deal.owner.name.split(' ')[0]}</span>
+              {(dealsByStage[stage.id] ?? []).map((deal) => {
+                const selecionado = selecionados.has(deal.id);
+                return (
+                  <div
+                    key={deal.id}
+                    data-kanban-card="true"
+                    ref={(el) => {
+                      if (el) cardRefs.current.set(deal.id, el);
+                      else cardRefs.current.delete(deal.id);
+                    }}
+                    draggable
+                    onDragStart={() => setDragDealId(deal.id)}
+                    onClick={() => navigate(`/crm/deals/${deal.id}`)}
+                    title="Clique pra abrir · arraste pra mudar de etapa · clique num espaço vazio e arraste pra selecionar vários"
+                    className={cn(
+                      'cursor-grab rounded-xl border border-slate-200 bg-slate-100 p-3 shadow-card active:cursor-grabbing',
+                      dragDealId === deal.id && 'opacity-50',
+                      selecionado && 'border-brand-400 ring-2 ring-brand-300',
+                    )}
+                  >
+                    <p className="text-sm font-medium text-slate-900">{deal.title}</p>
+                    {deal.productPlan && <p className="mt-0.5 text-xs text-slate-500">{deal.productPlan}</p>}
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className="text-sm font-semibold text-brand-300">{formatCurrency(deal.value)}</span>
+                      <span className="text-xs text-slate-400">{deal.owner.name.split(' ')[0]}</span>
+                    </div>
                   </div>
-                </Card>
-              ))}
+                );
+              })}
               {!(dealsByStage[stage.id] ?? []).length && (
                 <p className="px-1 py-4 text-center text-xs text-slate-400">Nenhuma negociação</p>
               )}
@@ -286,6 +428,18 @@ export function PipelinePage() {
           </Button>
         </form>
       </Dialog>
+
+      {marquee && (
+        <div
+          className="pointer-events-none fixed z-50 rounded border border-brand-400 bg-brand-300/15"
+          style={{
+            left: Math.min(marquee.startX, marquee.curX),
+            top: Math.min(marquee.startY, marquee.curY),
+            width: Math.abs(marquee.curX - marquee.startX),
+            height: Math.abs(marquee.curY - marquee.startY),
+          }}
+        />
+      )}
     </div>
   );
 }
