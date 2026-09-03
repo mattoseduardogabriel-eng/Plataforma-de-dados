@@ -360,7 +360,15 @@ export interface AuditLogItem {
 // ── Integrações ─────────────────────────────────────────────────────────
 export type LiroCrmStatus =
   | { configured: false }
-  | { configured: true; baseUrl: string; apiKeySuffix: string; lastSyncedAt: string | null };
+  | {
+      configured: true;
+      baseUrl: string;
+      apiKeySuffix: string;
+      lastSyncedAt: string | null;
+      syncFailing: boolean;
+      syncFailureCount: number;
+      lastSyncError: string | null;
+    };
 
 export interface LiroCrmSyncResult {
   created: number;

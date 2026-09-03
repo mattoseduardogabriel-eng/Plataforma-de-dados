@@ -81,6 +81,17 @@ verdade pela última vez (`liroCrmLastSyncAttemptAt`), rodando ou não
 vindo contato novo — não fica "parado" só porque não tinha nada novo pra
 trazer daquela vez.
 
+**Alerta de falha persistente.** `LiroCrmSyncScheduler` conta quantas
+rodadas SEGUIDAS do sync automático falharam por organização
+(`liroCrmSyncFailureCount`, zera a cada sucesso). Ao cruzar 5 rodadas
+seguidas falhando (~25min de falha contínua — sinal de chave revogada ou
+Liro fora do ar de vez, não instabilidade passageira isolada), grava uma
+entrada em `AuditLog` (`LIRO_CRM_SYNC_REPEATED_FAILURE`) e a tela de
+Integrações mostra um aviso vermelho com a última mensagem de erro
+(`liroCrmLastSyncError`). O alerta só registra uma vez ao cruzar o
+limite, não a cada rodada depois disso — volta a poder alertar só depois
+do próximo sucesso.
+
 ## Sincronização de funil (bidirecional, tempo real)
 
 Cada etapa do Funil de Vendas pode ser mapeada pra uma etapa do Kanban do
