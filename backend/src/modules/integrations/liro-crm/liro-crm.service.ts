@@ -10,6 +10,7 @@ import { SaveLiroCrmCredentialsDto } from './dto/save-credentials.dto';
 import { SetStageMappingDto } from './dto/set-stage-mapping.dto';
 import { LiroContact } from './liro-crm.connector';
 import { normalizePhone } from '../../../common/utils/phone.util';
+import { RealtimeService } from '../../realtime/realtime.service';
 
 /**
  * Extrai o nome do operador/atendente responsável pelo contato no Liro CRM,
@@ -66,6 +67,7 @@ export class LiroCrmService {
     private readonly connector: LiroCrmConnector,
     private readonly auditService: AuditService,
     private readonly configService: ConfigService,
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   async status(organizationId: string) {
@@ -660,6 +662,11 @@ export class LiroCrmService {
       entityId: deal.id,
       metadata: { liroKanbanStageId: liroStageId, newStageId: etapaAlvo.id } as Prisma.InputJsonValue,
     });
+    // Avisa quem está com o Funil de Vendas aberto AGORA (SSE) — sem isso,
+    // uma mudança de etapa vinda do Liro só aparecia na tela quando o
+    // polling batesse de novo (era exatamente esse atraso que dava a
+    // impressão de "sync não funciona" quando na verdade só demorava).
+    this.realtimeService.publish(organizationId, 'deal-changed', { dealId: deal.id, reason: 'liro-stage-synced' });
   }
 
   /**
@@ -681,6 +688,7 @@ export class LiroCrmService {
       entityId: leadId,
       metadata: { dealIds: deals.map((d) => d.id) } as Prisma.InputJsonValue,
     });
+    this.realtimeService.publish(organizationId, 'deal-changed', { reason: 'liro-conversation-deleted', dealIds: deals.map((d) => d.id) });
   }
 
   /**

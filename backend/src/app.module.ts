@@ -21,6 +21,7 @@ import { LiroCrmModule } from './modules/integrations/liro-crm/liro-crm.module';
 import { PersonalDataProviderModule } from './modules/integrations/personal-data-provider/personal-data-provider.module';
 import { BackofficeModule } from './modules/backoffice/backoffice.module';
 import { FeaturesModule } from './modules/features/features.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { FeaturesModule } from './modules/features/features.module';
     AuthModule,
     UsersModule,
     OrganizationsModule,
+    RealtimeModule,
     CrmModule,
     FinancialModule,
     PostSaleModule,

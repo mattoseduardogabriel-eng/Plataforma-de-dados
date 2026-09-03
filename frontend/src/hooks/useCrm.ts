@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useRealtimeDeals } from './useRealtimeDeals';
 import type { Activity, CrmOverview, Deal, Lead, Paginated, Pipeline, TeamPerformance } from '@/types';
 
 export function usePipelines() {
@@ -137,13 +138,20 @@ export function useDeleteSector() {
 }
 
 export function useDeals(params: { pipelineId?: string; stageId?: string; status?: string } = {}) {
+  // Funil de Vendas também muda por fora (webhook do Liro CRM movendo um
+  // negócio, ou outra aba/pessoa mexendo no funil) — useRealtimeDeals
+  // assina esses eventos em tempo real (SSE) e invalida essa query assim
+  // que algo muda, em vez de ficar perguntando de tempos em tempos.
+  useRealtimeDeals();
+
   return useQuery({
     queryKey: ['crm', 'deals', params],
     queryFn: async () => (await api.get<Deal[]>('/crm/deals', { params })).data,
-    // Funil de Vendas também muda por fora (webhook do Liro CRM movendo um
-    // negócio em tempo real) — sem isso só atualiza na tela quando ALGUÉM
-    // aqui mexe em algo, nunca por causa do que aconteceu do lado de lá.
-    refetchInterval: 5000,
+    // Rede de segurança bem mais espaçada que o poll antigo (5s) — cobre
+    // só o caso raro da conexão SSE cair e não conseguir reconectar (ex:
+    // proxy no meio do caminho bloqueando streaming). Com o SSE
+    // funcionando normal, isso quase nunca chega a disparar de verdade.
+    refetchInterval: 60000,
   });
 }
 

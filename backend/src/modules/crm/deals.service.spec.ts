@@ -9,6 +9,7 @@ describe('DealsService', () => {
   let prisma: any;
   let liroCrmService: any;
   let auditService: any;
+  let realtimeService: any;
 
   const baseDeal = {
     id: 'deal-1',
@@ -58,7 +59,8 @@ describe('DealsService', () => {
     };
     liroCrmService = { pushStageForDeal: jest.fn().mockResolvedValue(undefined) };
     auditService = { log: jest.fn().mockResolvedValue(undefined) };
-    service = new DealsService(prisma, liroCrmService, auditService);
+    realtimeService = { publish: jest.fn() };
+    service = new DealsService(prisma, liroCrmService, auditService, realtimeService);
   });
 
   describe('close — GANHO', () => {

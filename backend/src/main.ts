@@ -16,7 +16,15 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: false, rawBody: true });
 
   app.use(helmet());
-  app.use(compression());
+  // Nunca comprime o stream de tempo real (SSE, /api/realtime/*) — gzip
+  // funciona em cima de um buffer que só libera quando enche, o que
+  // atrasaria (às vezes por muito tempo) cada evento chegando no
+  // navegador, justamente o oposto do que "tempo real" quer dizer.
+  app.use(
+    compression({
+      filter: (req, res) => (req.path.startsWith('/api/realtime/') ? false : compression.filter(req, res)),
+    }),
+  );
   app.use(cookieParser());
 
   const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:5173';

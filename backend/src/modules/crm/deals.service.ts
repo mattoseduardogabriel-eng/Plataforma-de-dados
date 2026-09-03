@@ -8,6 +8,7 @@ import { LiroCrmService } from '../integrations/liro-crm/liro-crm.service';
 import { normalizePhone } from '../../common/utils/phone.util';
 import { AuditService } from '../audit/audit.service';
 import { normalizePagination } from '../../common/utils/pagination.util';
+import { RealtimeService } from '../realtime/realtime.service';
 
 const DEAL_INCLUDE = {
   stage: true,
@@ -22,6 +23,7 @@ export class DealsService {
     private readonly prisma: PrismaService,
     private readonly liroCrmService: LiroCrmService,
     private readonly auditService: AuditService,
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   async create(organizationId: string, ownerId: string, dto: CreateDealDto) {
@@ -47,6 +49,7 @@ export class DealsService {
     // depois. Melhor esforço, não bloqueia a resposta (ver
     // LiroCrmService.pushStageForDeal).
     this.liroCrmService.pushStageForDeal(organizationId, deal.id).catch(() => {});
+    this.realtimeService.publish(organizationId, 'deal-changed', { dealId: deal.id, reason: 'created' });
 
     return deal;
   }
@@ -181,6 +184,7 @@ export class DealsService {
     // CRM só se houver mapeamento configurado e o lead já tiver conversa
     // aberta por lá.
     this.liroCrmService.pushStageForDeal(organizationId, id).catch(() => {});
+    this.realtimeService.publish(organizationId, 'deal-changed', { dealId: id, reason: 'moved' });
 
     return this.findOne(organizationId, id);
   }
@@ -205,6 +209,10 @@ export class DealsService {
       entityType: 'Deal',
       metadata: { requested: ids.length, removed: result.count } as Prisma.InputJsonValue,
     });
+
+    if (result.count > 0) {
+      this.realtimeService.publish(organizationId, 'deal-changed', { reason: 'removed', ids });
+    }
 
     return { removed: result.count };
   }

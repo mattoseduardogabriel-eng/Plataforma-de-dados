@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Plus, Settings2, ShieldAlert, Trash2, Upload, Users2, Wallet } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, Input, Label, Spinner, Badge, EmptyState, StatCard } from '@/components/ui/primitives';
@@ -18,8 +18,14 @@ import { useAuth, extractErrorMessage } from '@/lib/auth-context';
 import { formatCurrency, formatDocument } from '@/lib/utils';
 import type { ChurnRiskLevel, CustomerStatus } from '@/types';
 import { CustomerQuickViewModal } from './CustomerQuickViewModal';
-import { ImportCustomersDialog } from './ImportCustomersDialog';
 import { ManageCustomerFieldsDialog } from './ManageCustomerFieldsDialog';
+
+// xlsx (biblioteca de leitura de planilha) é pesada e só entra em uso
+// quando alguém abre esse diálogo — separado do chunk da tela de Clientes
+// pra quem nunca importa planilha nem baixa esse peso.
+const ImportCustomersDialog = lazy(() =>
+  import('./ImportCustomersDialog').then((m) => ({ default: m.ImportCustomersDialog })),
+);
 
 const RISK_TONE: Record<ChurnRiskLevel, 'success' | 'warning' | 'danger'> = {
   BAIXO: 'success',
@@ -389,7 +395,14 @@ export function CustomersPage() {
       </Dialog>
 
       <CustomerQuickViewModal customerId={quickViewId} onClose={() => setQuickViewId(null)} />
-      <ImportCustomersDialog open={importOpen} onClose={() => setImportOpen(false)} />
+      {/* Só monta (e baixa o chunk com xlsx) depois do primeiro clique em
+          "Importar planilha" — renderizar sempre, mesmo com open=false,
+          baixaria o peso da lib pra quem nunca abre esse diálogo. */}
+      {importOpen && (
+        <Suspense fallback={null}>
+          <ImportCustomersDialog open={importOpen} onClose={() => setImportOpen(false)} />
+        </Suspense>
+      )}
       {canManageFields && <ManageCustomerFieldsDialog open={fieldsOpen} onClose={() => setFieldsOpen(false)} />}
 
       <Dialog open={confirmDeleteSelectedOpen} onClose={() => setConfirmDeleteSelectedOpen(false)} title="Excluir clientes selecionados">

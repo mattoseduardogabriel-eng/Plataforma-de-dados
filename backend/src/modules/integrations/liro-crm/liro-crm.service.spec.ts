@@ -21,7 +21,14 @@ describe('LiroCrmService — verificação de assinatura do webhook', () => {
       },
       lead: { findMany: jest.fn().mockResolvedValue([]) },
     };
-    service = new LiroCrmService(prisma, cipher, {} as any, { log: jest.fn() } as any, { get: jest.fn() } as any);
+    service = new LiroCrmService(
+      prisma,
+      cipher,
+      {} as any,
+      { log: jest.fn() } as any,
+      { get: jest.fn() } as any,
+      { publish: jest.fn() } as any,
+    );
   });
 
   it('aceita a entrega quando a assinatura bate com o segredo salvo', async () => {
