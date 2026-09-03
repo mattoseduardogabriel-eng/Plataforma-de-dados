@@ -7,17 +7,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // Connection pooled (Neon: host com "-pooler") — usada pelo app em
-  // runtime, onde cada instância abre várias conexões de curta duração.
-  url       = env("DATABASE_URL")
-  // Connection direta (sem pooler) — só usada por `prisma migrate deploy`.
-  // DDL (CREATE TABLE, ALTER TABLE etc) atrás de um pooler em modo
-  // transaction (como o do Neon) pode falhar ou se comportar de forma
-  // inesperada; migration sempre precisa da conexão de sessão direta.
-  // Sem essa variável configurada, o Prisma cai de volta pra `url` — não
-  // quebra nada enquanto DIRECT_URL não existir no ambiente, só deixa de
-  // ganhar a separação até alguém configurar.
-  directUrl = env("DIRECT_URL")
+  url      = env("DATABASE_URL")
 }
 
 // ────────────────────────────────────────────────────────────────────────
