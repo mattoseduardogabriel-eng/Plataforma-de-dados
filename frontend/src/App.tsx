@@ -8,6 +8,7 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { PipelinePage } from '@/pages/crm/PipelinePage';
 import { LeadsPage } from '@/pages/crm/LeadsPage';
 import { LeadDetailPage } from '@/pages/crm/LeadDetailPage';
+import { OpenLeadByPhonePage } from '@/pages/crm/OpenLeadByPhonePage';
 import { DealDetailPage } from '@/pages/crm/DealDetailPage';
 import { TeamPage } from '@/pages/crm/TeamPage';
 import { TasksPage } from '@/pages/crm/TasksPage';
@@ -41,6 +42,8 @@ export default function App() {
       <Route path="/crm/funil" element={<ProtectedRoute><PipelinePage /></ProtectedRoute>} />
       <Route path="/crm/leads" element={<ProtectedRoute><LeadsPage /></ProtectedRoute>} />
       <Route path="/crm/leads/:id" element={<ProtectedRoute><LeadDetailPage /></ProtectedRoute>} />
+      {/* Deep-link "Abrir no Aster" clicado de dentro de uma conversa do Liro CRM — resolve ?phone= e navega pro lead. */}
+      <Route path="/crm/leads/open" element={<ProtectedRoute><OpenLeadByPhonePage /></ProtectedRoute>} />
       <Route path="/crm/deals/:id" element={<ProtectedRoute><DealDetailPage /></ProtectedRoute>} />
       <Route path="/crm/equipe" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
       <Route path="/tarefas" element={<ProtectedRoute><TasksPage /></ProtectedRoute>} />
