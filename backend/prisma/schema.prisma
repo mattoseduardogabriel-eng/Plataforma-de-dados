@@ -1,0 +1,815 @@
+// Plataforma de Dados — schema Prisma
+// Multi-tenant: toda entidade de negócio pertence a uma Organization.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Núcleo: organização, usuários, auditoria
+// ────────────────────────────────────────────────────────────────────────
+
+model Organization {
+  id         String   @id @default(uuid())
+  name       String
+  cnpj       String?
+  // Organização técnica que hospeda as contas SUPER_ADMIN (donos da plataforma
+  // Aster) — nunca aparece na lista de empresas clientes do backoffice, e não
+  // guarda dados de negócio (CRM/financeiro/pós-venda) de verdade.
+  isPlatform Boolean  @default(false)
+  // Empresa suspensa não consegue logar (ver AuthService.validateCredentials).
+  // Controlado pelo backoffice do dono da plataforma — independente da
+  // aprovação/assinatura, serve pra bloqueio manual (ex.: abuso).
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Empresa que se auto-cadastra em /registrar entra como PENDING e não
+  // consegue logar até o dono da plataforma aprovar. Empresa criada direto
+  // pelo backoffice já nasce APPROVED. Organizações antigas/técnicas também
+  // ficam APPROVED por padrão (coluna nova, default preserva o que já existe).
+  approvalStatus     OrganizationApprovalStatus @default(APPROVED)
+  approvedAt         DateTime?
+  rejectionReason    String?
+
+  // Controle manual de assinatura mensal — sem gateway de pagamento integrado
+  // ainda, o dono da plataforma confere o pagamento por fora e atualiza aqui.
+  subscriptionStatus     SubscriptionStatus @default(ACTIVE)
+  subscriptionPlan       String?
+  subscriptionPriceCents Int?
+  nextBillingAt          DateTime?
+  // Preenchido quando a empresa é aprovada (ou editado manualmente); login é
+  // bloqueado se subscriptionStatus continuar TRIAL depois dessa data.
+  trialEndsAt            DateTime?
+  // Preenchido quando o ADMIN da própria empresa confirma/assina o plano
+  // definido pelo dono da plataforma — puramente informativo (não há
+  // gateway de pagamento integrado), mas registra o aceite formal.
+  subscriptionConfirmedAt DateTime?
+
+  // Meta de faturamento do mês, definida pelo ADMIN — usada no widget
+  // "Meta x Produção" do dashboard. Null = widget não aparece.
+  monthlyGoalCents Int?
+
+  // Teto de ferramentas que o dono da plataforma liberou pra essa empresa
+  // (ver backend/src/common/features/platform-features.ts). Chaves fora
+  // dessa lista ficam bloqueadas pra todo mundo da empresa, mesmo que o
+  // ADMIN dela tente liberar por setor/usuário — ver FeaturesService.
+  enabledFeatures String[] @default(["crm","financeiro","pos_venda","consulta_cnpj","consulta_cpf","consulta_telefone","consulta_credito","consulta_parentes","crivo","relatorios_cruzamento","integracao_liro_crm"])
+
+  // Integração com o Liro CRM (API externa, chave por organização — ver
+  // docs/INTEGRACAO-LIRO-CRM.md). A chave é guardada cifrada (AES-256-GCM,
+  // ver src/common/crypto/secret-cipher.ts), nunca em texto puro.
+  liroCrmApiKeyEncrypted String?
+  liroCrmBaseUrl         String?
+  // Marca-d'água da sincronização INCREMENTAL (usada no ?since= da API do
+  // Liro) — só avança quando a resposta traz contato de verdade, nunca no
+  // relógio local, pra não "envenenar" sincronizações futuras com uma
+  // resposta vazia transitória (ver LiroCrmService.syncContacts). Não é
+  // o que aparece na tela como "Última sincronização" — é
+  // liroCrmLastSyncAttemptAt, abaixo.
+  liroCrmLastSyncedAt    DateTime?
+  // Quando a sincronização rodou de verdade pela última vez (manual,
+  // automática a cada 5min, ou pelo botão Atualizar do funil) —
+  // independente de ter trazido contato novo ou não. É esse campo que a
+  // tela mostra em "Última sincronização", pra não parecer travada só
+  // porque não tinha nada novo pra trazer daquela vez.
+  liroCrmLastSyncAttemptAt DateTime?
+  // Token opaco usado na URL que o Liro chama de volta quando uma conversa
+  // muda de etapa (POST /api/integrations/liro-crm/webhook/:token) — não é
+  // o id da organização de propósito, pra não dar pra adivinhar/forjar
+  // eventos só sabendo o id. Gerado ao conectar (ver LiroCrmService).
+  liroWebhookToken       String?   @unique
+  // Segredo (cifrado, mesmo esquema de liroCrmApiKeyEncrypted) que o Liro
+  // devolve ao registrar o webhook — usado pra validar o header
+  // X-Liro-Signature de cada entrega e confirmar que veio do Liro de
+  // verdade (ver LiroCrmService.handleInboundWebhook). Nullable: integração
+  // conectada antes desse recurso existir, ou registro automático que
+  // falhou (ver saveCredentials), fica sem — nesse caso a verificação é
+  // tolerante e só loga aviso, pra não quebrar quem já estava funcionando.
+  liroWebhookSigningSecretEncrypted String?
+  // Quantas rodadas SEGUIDAS do sync automático (a cada 5min, ver
+  // LiroCrmSyncScheduler) falharam pra essa organização — zera a cada
+  // sucesso. Usado só pra detectar falha PERSISTENTE (chave revogada,
+  // Liro fora do ar de vez) sem alarme por uma instabilidade passageira
+  // isolada.
+  liroCrmSyncFailureCount Int      @default(0)
+  // Mensagem da última falha do sync automático — só informativo, exibido
+  // na tela de Integrações quando liroCrmSyncFailureCount cruza o limite.
+  liroCrmLastSyncError    String?
+
+  personalDataProviderConfig PersonalDataProviderConfig?
+
+  users             User[]
+  auditLogs         AuditLog[]
+  pipelines         Pipeline[]
+  leads             Lead[]
+  deals             Deal[]
+  activities        Activity[]
+  categories        Category[]
+  transactions      Transaction[]
+  customers         Customer[]
+  contracts         Contract[]
+  interactions      InteractionHistory[]
+  churnSignals      ChurnSignal[]
+  dataQueries       DataQuery[]
+  reports           Report[]
+  creditPolicies    CreditPolicy[]
+  crivoDecisions    CrivoDecision[]
+  customerFieldDefinitions CustomerFieldDefinition[]
+  sectors                  OrganizationSector[]
+  importJobs               ImportJob[]
+
+  @@map("organizations")
+}
+
+enum CustomFieldType {
+  TEXTO
+  BOOLEANO
+  LISTA
+}
+
+// Campo personalizado da Carteira de Clientes, definido por organização
+// (só Admin/Gestor cria — ver customer-fields.controller.ts). Cada campo
+// criado aqui aparece automaticamente como filtro na Carteira de Clientes
+// e como campo editável no popup do cliente — não precisa mexer em código
+// pra adicionar um campo novo.
+model CustomerFieldDefinition {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Chave estável usada em Customer.customFields — gerada a partir do
+  // rótulo no momento da criação, nunca muda depois (mesmo se o rótulo mudar).
+  key            String
+  label          String
+  type           CustomFieldType
+  // Opções da lista, só usado quando type = LISTA.
+  options        String[] @default([])
+  order          Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, key])
+  @@map("customer_field_definitions")
+}
+
+enum OrganizationApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum Role {
+  // Dono da plataforma Aster — não pertence a nenhuma empresa cliente,
+  // gerencia o backoffice (criar/suspender organizações). Nunca acessa
+  // CRM/Financeiro/Pós-venda de nenhum cliente.
+  SUPER_ADMIN
+  ADMIN
+  GESTOR
+  VENDEDOR
+  FINANCEIRO
+  ATENDIMENTO
+  ANALISTA
+}
+
+model User {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name                String
+  email               String   @unique
+  passwordHash        String
+  role                Role     @default(VENDEDOR)
+  active              Boolean  @default(true)
+  hashedRefreshToken  String?
+  tokenVersion        Int      @default(0)
+  // 2FA (TOTP) — só ADMIN/GESTOR podem ativar (ver TwoFactorController).
+  // Segredo cifrado (mesmo SecretCipher usado nas credenciais do Liro
+  // CRM) desde que é gerado; twoFactorEnabled só vira true depois de
+  // confirmar um código válido — gerar o QR sozinho não liga a exigência,
+  // assim ninguém fica trancado pra fora por gerar e nunca confirmar.
+  twoFactorSecret     String?
+  twoFactorEnabled    Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Setor do usuário dentro da empresa — usado tanto pra atribuição de
+  // leads quanto como escopo de bloqueio de ferramentas (ver
+  // OrganizationSector.disabledFeatures).
+  sectorId String?
+  sector   OrganizationSector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  // Ferramentas desligadas especificamente pra este usuário pelo
+  // ADMIN/GESTOR da empresa — tem prioridade sobre o setor.
+  disabledFeatures String[] @default([])
+  // ID do operador correspondente no Liro CRM (vínculo best-effort — a API
+  // real do Liro não tem esse conceito confirmado; guardado pra uso futuro
+  // caso a integração evolua pra atribuir conversas por operador).
+  liroOperatorId   String?
+  // Preferência pessoal — quais widgets do dashboard este usuário escondeu.
+  // Ver frontend/src/lib/dashboard-widgets.ts pra chaves válidas.
+  hiddenDashboardWidgets String[] @default([])
+
+  auditLogs           AuditLog[]
+  leadsCreated        Lead[]        @relation("LeadCreatedBy")
+  leadsAssigned       Lead[]        @relation("LeadAssignedTo")
+  leadAssignments     LeadAssignee[]
+  dealsOwned          Deal[]        @relation("DealOwner")
+  activitiesCreated   Activity[]    @relation("ActivityCreatedBy")
+  activitiesAssigned  Activity[]    @relation("ActivityAssignedTo")
+  transactionsCreated Transaction[]
+  interactions        InteractionHistory[]
+  dataQueries         DataQuery[]
+  reports             Report[]
+  crivoDecisions      CrivoDecision[]
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action         String
+  entityType     String
+  entityId       String?
+  purpose        String?
+  metadata       Json?
+  ipAddress      String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType])
+  @@map("audit_logs")
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// CRM: funil de vendas
+// ────────────────────────────────────────────────────────────────────────
+
+model Pipeline {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  stages PipelineStage[]
+  deals  Deal[]
+
+  @@index([organizationId])
+  @@map("pipelines")
+}
+
+model PipelineStage {
+  id         String   @id @default(uuid())
+  pipelineId String
+  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name       String
+  order      Int
+  colorHex   String   @default("#6366f1")
+  isWon      Boolean  @default(false)
+  isLost     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  // Mapeamento manual pra sincronização de funil com o Liro CRM — qual
+  // etapa do Kanban de lá corresponde a esta etapa daqui. Guarda o nome
+  // junto (não só o id) só pra exibir na tela de mapeamento sem precisar
+  // buscar de novo na API do Liro toda vez; quem manda é sempre o id na
+  // hora de mover de verdade. Nula = etapa sem correspondência, então
+  // negócio que cai/sai daqui nunca reflete no Liro (ver deals.service.ts).
+  liroKanbanStageId   String?
+  liroKanbanStageName String?
+
+  deals Deal[]
+
+  @@index([pipelineId])
+  @@map("pipeline_stages")
+}
+
+enum DocumentType {
+  CPF
+  CNPJ
+}
+
+enum LeadStatus {
+  NOVO
+  QUALIFICANDO
+  DESCARTADO
+  CONVERTIDO
+}
+
+model Lead {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  document       String?
+  documentType   DocumentType?
+  email          String?
+  phone          String?
+  companyName    String?
+  source         String?
+  status         LeadStatus @default(NOVO)
+  liroContactId  String?
+  // Nome do operador responsável, do lado do Liro CRM — capturado de forma
+  // best-effort na sincronização (campo pode não existir dependendo da
+  // resposta da API deles); é só informativo, não é usado pra lógica.
+  liroOperatorName String?
+  assignedToId   String?
+  assignedTo     User?    @relation("LeadAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  sectorId       String?
+  sector         OrganizationSector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  createdById    String
+  createdBy      User     @relation("LeadCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  deals      Deal[]
+  activities Activity[]
+  // Pessoas adicionais atribuídas ao lead, além do "assignedTo" principal —
+  // um contato pode ter mais de uma pessoa responsável ao mesmo tempo.
+  additionalAssignees LeadAssignee[]
+  // Cliente criado direto deste lead via "Salvar na carteira" — ver Customer.leadId.
+  customer   Customer?
+
+  @@index([organizationId, status])
+  @@map("leads")
+}
+
+// Setor/equipe da organização (ex.: "Comercial Maringá", "Suporte N2") —
+// usado pra categorizar/atribuir leads por área, além da pessoa responsável.
+model OrganizationSector {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  createdAt      DateTime @default(now())
+
+  // Ferramentas que o ADMIN/GESTOR da empresa desligou pra esse setor —
+  // só pode desligar o que já está dentro do teto de Organization.enabledFeatures.
+  disabledFeatures String[] @default([])
+
+  leads   Lead[]
+  members User[]
+
+  @@unique([organizationId, name])
+  @@map("organization_sectors")
+}
+
+// Atribuição extra de pessoa a um lead — junto com `Lead.assignedTo`
+// (responsável principal), permite múltiplas pessoas no mesmo contato.
+model LeadAssignee {
+  id         String   @id @default(uuid())
+  leadId     String
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@unique([leadId, userId])
+  @@map("lead_assignees")
+}
+
+enum DealStatus {
+  ABERTO
+  GANHO
+  PERDIDO
+}
+
+model Deal {
+  id                String   @id @default(uuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId            String?
+  lead              Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  pipelineId        String
+  pipeline          Pipeline @relation(fields: [pipelineId], references: [id])
+  stageId           String
+  stage             PipelineStage @relation(fields: [stageId], references: [id])
+  title             String
+  value             Decimal  @default(0) @db.Decimal(14, 2)
+  productPlan       String?
+  ownerId           String
+  owner             User     @relation("DealOwner", fields: [ownerId], references: [id])
+  expectedCloseDate DateTime?
+  status            DealStatus @default(ABERTO)
+  lostReason        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  closedAt          DateTime?
+
+  activities Activity[]
+  customer   Customer?
+
+  @@index([organizationId, status])
+  @@index([stageId])
+  @@map("deals")
+}
+
+enum ActivityType {
+  LIGACAO
+  REUNIAO
+  EMAIL
+  PROPOSTA
+  TAREFA
+  NOTA
+}
+
+model Activity {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dealId         String?
+  deal           Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  leadId         String?
+  lead           Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type           ActivityType
+  title          String
+  notes          String?
+  dueDate        DateTime?
+  doneAt         DateTime?
+  createdById    String
+  createdBy      User     @relation("ActivityCreatedBy", fields: [createdById], references: [id])
+  assignedToId   String?
+  assignedTo     User?    @relation("ActivityAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([dealId])
+  @@map("activities")
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Financeiro
+// ────────────────────────────────────────────────────────────────────────
+
+enum FinanceType {
+  RECEITA
+  DESPESA
+}
+
+model Category {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  type           FinanceType
+  createdAt      DateTime @default(now())
+
+  transactions Transaction[]
+
+  @@index([organizationId])
+  @@map("categories")
+}
+
+enum TransactionStatus {
+  PENDENTE
+  PAGO
+  ATRASADO
+  CANCELADO
+}
+
+model Transaction {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  categoryId     String?
+  category       Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  type           FinanceType
+  description    String
+  amount         Decimal  @db.Decimal(14, 2)
+  dueDate        DateTime
+  paidAt         DateTime?
+  status         TransactionStatus @default(PENDENTE)
+  customerId     String?
+  customer       Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId, type, status])
+  @@index([organizationId, dueDate])
+  @@map("transactions")
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Pós-venda / relacionamento
+// ────────────────────────────────────────────────────────────────────────
+
+enum CustomerStatus {
+  ATIVO
+  INATIVO
+  SUSPENSO
+  CANCELADO
+}
+
+enum ChurnRiskLevel {
+  BAIXO
+  MEDIO
+  ALTO
+}
+
+model Customer {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name               String
+  document           String?
+  documentType       DocumentType?
+  email              String?
+  phone              String?
+  address            String?
+  city               String?
+  planName           String?
+  monthlyValue       Decimal? @db.Decimal(14, 2)
+  contractStartDate  DateTime?
+  status             CustomerStatus @default(ATIVO)
+  churnRiskScore     Int?
+  churnRiskLevel     ChurnRiskLevel?
+  liroContactId      String?
+  dealId             String?  @unique
+  deal               Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  // Lead de origem, quando o cliente foi criado direto do botão "Salvar na
+  // carteira" (sem passar pelo funil de vendas) — @unique pra um mesmo lead
+  // nunca virar dois clientes, e é como o front sabe mostrar "já está na
+  // carteira" em vez do botão de novo.
+  leadId             String?  @unique
+  lead               Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  // Valores dos campos personalizados da organização (ver
+  // CustomerFieldDefinition) — { [chave do campo]: string | boolean }.
+  customFields       Json     @default("{}")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  contracts    Contract[]
+  interactions InteractionHistory[]
+  churnSignals ChurnSignal[]
+  transactions Transaction[]
+
+  @@index([organizationId, status])
+  @@map("customers")
+}
+
+enum ImportJobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+// Job de importação em massa (hoje só planilha de Clientes) processado em
+// segundo plano — a requisição HTTP só cria o job e devolve o id na hora,
+// sem esperar milhares de linhas serem processadas uma a uma (o que
+// travava a requisição e arriscava timeout numa planilha grande). O front
+// consulta o progresso (GET .../import/:jobId) até status virar DONE ou
+// FAILED. Sem fila de verdade (Redis/BullMQ) de propósito — processamento
+// assíncrono em memória já resolve o problema real (requisição travada) e
+// não pede infra nova; ver ImportJobsService.
+model ImportJob {
+  id             String          @id @default(uuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  // "customers" é o único tipo hoje — string aberta em vez de enum pra
+  // não precisar migração toda vez que um novo tipo de importação surgir.
+  type           String
+  status         ImportJobStatus @default(PENDING)
+  totalRows      Int
+  processedRows  Int             @default(0)
+  created        Int             @default(0)
+  updated        Int             @default(0)
+  // [{ row, name?, message }] — mesmo formato que ImportCustomersResult.errors.
+  errors         Json?
+  // Preenchido só se o job inteiro falhar de forma inesperada (ex: erro de
+  // banco no meio do lote) — diferente de uma linha individual com
+  // problema, que vai pra `errors` e não interrompe o resto.
+  errorMessage   String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([organizationId, createdAt])
+  @@map("import_jobs")
+}
+
+enum ContractStatus {
+  ATIVO
+  ENCERRADO
+  RENOVADO
+}
+
+model Contract {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  planName       String
+  value          Decimal  @db.Decimal(14, 2)
+  startDate      DateTime
+  endDate        DateTime?
+  status         ContractStatus @default(ATIVO)
+  fileUrl        String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, customerId])
+  @@map("contracts")
+}
+
+enum InteractionType {
+  LIGACAO
+  EMAIL
+  CHAT
+  VISITA
+  RECLAMACAO
+  ELOGIO
+}
+
+model InteractionHistory {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type           InteractionType
+  summary        String
+  notes          String?
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, customerId])
+  @@map("interaction_history")
+}
+
+model ChurnSignal {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  signalType     String
+  weight         Int      @default(1)
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, customerId])
+  @@map("churn_signals")
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Inteligência de dados: consultas e cruzamentos
+// ────────────────────────────────────────────────────────────────────────
+
+enum DataQueryType {
+  CNPJ
+  CPF
+  TELEFONE
+  CREDITO
+  PARENTES
+}
+
+model DataQuery {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedById  String
+  requestedBy    User     @relation(fields: [requestedById], references: [id])
+  type           DataQueryType
+  targetDocument String
+  purpose        String
+  provider       String
+  isDemoData     Boolean  @default(true)
+  resultJson     Json
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime?
+
+  @@index([organizationId, type, targetDocument])
+  @@index([organizationId, createdAt])
+  @@map("data_queries")
+}
+
+// Config do provedor de dados pessoais (CPF/telefone/score/parentes) por
+// organização — cada organização usa o bureau (e o contrato) que ela mesma
+// fechou. A chave é cifrada (ver src/common/crypto/secret-cipher.ts), nunca
+// gravada em texto puro. Sem config aqui, a consulta cai no conector mock
+// (modo demonstração) — ver docs/LGPD-E-FONTES-DE-DADOS.md.
+model PersonalDataProviderConfig {
+  id             String @id @default(uuid())
+  organizationId String @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // "SERASA" | "BOA_VISTA" | "BIG_DATA_CORP" | "ASSERTIVA" | "QUOD" | "GENERICO"
+  provider        String
+  baseUrl         String
+  apiKeyEncrypted String
+  authHeaderName  String  @default("Authorization")
+  authScheme      String  @default("Bearer") // prefixo antes da chave no header; "" para nenhum
+
+  // Caminho de cada tipo de consulta, com o placeholder {documento}
+  // (ex.: "/pessoas/{documento}/score"). Nulo = esse tipo continua em modo
+  // demonstração mesmo com o provedor configurado.
+  cpfPath         String?
+  phonePath       String?
+  creditScorePath String?
+  relativesPath   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("personal_data_provider_configs")
+}
+
+enum ReportTargetType {
+  CNPJ
+  CPF
+}
+
+model Report {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title          String
+  targetDocument String
+  targetType     ReportTargetType
+  summaryJson    Json
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("reports")
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Crivo: motor de decisão de crédito (policy engine)
+// ────────────────────────────────────────────────────────────────────────
+
+// Política de crédito configurável pela organização. Combina o score
+// simulado, pendências e situação cadastral (CNPJ) para decidir aprovação,
+// reprovação ou análise manual — e sugerir um limite de crédito inicial.
+model CreditPolicy {
+  id                        String   @id @default(uuid())
+  organizationId            String
+  organization              Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name                      String
+  active                    Boolean  @default(true)
+  isDefault                 Boolean  @default(false)
+  minScoreApproved          Int      @default(700)
+  minScoreManualReview      Int      @default(400)
+  maxPendenciasAllowed      Int      @default(0)
+  blockIfCnpjInativa        Boolean  @default(true)
+  flagIfChurnRiskAlto       Boolean  @default(true)
+  creditLimitPerScorePoint  Decimal  @default(10) @db.Decimal(10, 2)
+  maxCreditLimit            Decimal  @default(50000) @db.Decimal(14, 2)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  decisions CrivoDecision[]
+
+  @@index([organizationId])
+  @@map("credit_policies")
+}
+
+enum CrivoOutcome {
+  APROVADO
+  REPROVADO
+  ANALISE_MANUAL
+}
+
+model CrivoDecision {
+  id                   String   @id @default(uuid())
+  organizationId       String
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  policyId             String?
+  policy               CreditPolicy? @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  targetDocument       String
+  targetType           ReportTargetType
+  outcome              CrivoOutcome
+  scoreUsed            Int?
+  suggestedCreditLimit Decimal? @db.Decimal(14, 2)
+  reasons              Json
+  purpose              String
+  requestedById        String
+  requestedBy          User     @relation(fields: [requestedById], references: [id])
+  createdAt            DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, targetDocument])
+  @@map("crivo_decisions")
+}

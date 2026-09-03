@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Tema claro — escala slate padrão (RGB, para suportar opacidade via /NN) */
+    --slate-50: 248 250 252;
+    --slate-100: 241 245 249;
+    --slate-200: 226 232 240;
+    --slate-300: 203 213 225;
+    --slate-400: 148 163 184;
+    --slate-500: 100 116 139;
+    --slate-600: 71 85 105;
+    --slate-700: 51 65 85;
+    --slate-800: 30 41 59;
+    --slate-900: 15 23 42;
+
+    /* Acento "órbita" (teal/mint) — 400/500 são constantes entre temas;
+       300 é o único tom que precisa inverter (texto de acento sobre
+       superfície clara vs. escura). */
+    --brand-300: 15 121 90;
+    --brand-400: 61 219 170;
+    --brand-500: 34 192 140;
+
+    /* Cores de gráfico — trio categórico validado (contraste + separação
+       para daltonismo) contra a superfície do Card (--slate-100) em cada
+       tema. Ver skill de dataviz: scripts/validate_palette.js. Evitamos
+       verde+vermelho lado a lado (pior par pra deuteranopia); "despesas"
+       usa laranja em vez de vermelho por isso. */
+    --chart-receitas: 27 175 122;
+    --chart-despesas: 235 104 52;
+    --chart-saldo: 42 120 214;
+  }
+
+  .dark {
+    --slate-50: 5 8 10;
+    --slate-100: 10 15 19;
+    --slate-200: 19 26 31;
+    --slate-300: 31 40 46;
+    --slate-400: 58 69 75;
+    --slate-500: 102 117 122;
+    --slate-600: 139 154 157;
+    --slate-700: 174 188 188;
+    --slate-800: 211 220 218;
+    --slate-900: 242 247 245;
+
+    --brand-300: 110 231 196;
+
+    --chart-receitas: 25 158 112;
+    --chart-despesas: 217 89 38;
+    --chart-saldo: 57 135 229;
+  }
+
+  html {
+    @apply antialiased;
+  }
+  body {
+    @apply bg-slate-50;
+  }
+  ::selection {
+    @apply bg-brand-500/30 text-brand-300;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full;
+  }
+
+  /* Campo estelar decorativo usado nas telas de autenticação — só aparece
+     no tema escuro (ecoando a identidade "órbita"); no tema claro a classe
+     não tem efeito, mantendo o fundo liso. */
+  .dark .star-field {
+    background-image: theme('backgroundImage.star-field');
+    background-size: theme('backgroundSize.stars');
+    background-repeat: repeat;
+  }
+}
