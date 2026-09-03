@@ -7,6 +7,7 @@ import { CloseDealDto } from './dto/close-deal.dto';
 import { LiroCrmService } from '../integrations/liro-crm/liro-crm.service';
 import { normalizePhone } from '../../common/utils/phone.util';
 import { AuditService } from '../audit/audit.service';
+import { normalizePagination } from '../../common/utils/pagination.util';
 
 const DEAL_INCLUDE = {
   stage: true,
@@ -92,21 +93,40 @@ export class DealsService {
     return lead.id;
   }
 
-  findAll(
+  // Sem paginação por padrão de propósito: o Funil de Vendas (Kanban)
+  // precisa de TODOS os negócios do pipeline numa chamada só pra montar as
+  // colunas — paginar quebraria o board. Só pagina (devolvendo o envelope
+  // { data, total, page, pageSize, totalPages } em vez do array direto)
+  // quando o chamador passa `page` explicitamente — útil pra uma futura
+  // tela de listagem de negócios fora do Kanban.
+  async findAll(
     organizationId: string,
-    filters: { pipelineId?: string; stageId?: string; ownerId?: string; status?: string },
+    filters: { pipelineId?: string; stageId?: string; ownerId?: string; status?: string; page?: number; pageSize?: number },
   ) {
-    return this.prisma.deal.findMany({
-      where: {
-        organizationId,
-        pipelineId: filters.pipelineId,
-        stageId: filters.stageId,
-        ownerId: filters.ownerId,
-        status: filters.status as any,
-      },
-      include: DEAL_INCLUDE,
-      orderBy: { updatedAt: 'desc' },
-    });
+    const where: Prisma.DealWhereInput = {
+      organizationId,
+      pipelineId: filters.pipelineId,
+      stageId: filters.stageId,
+      ownerId: filters.ownerId,
+      status: filters.status as any,
+    };
+
+    if (filters.page === undefined) {
+      return this.prisma.deal.findMany({ where, include: DEAL_INCLUDE, orderBy: { updatedAt: 'desc' } });
+    }
+
+    const { page, pageSize } = normalizePagination(filters.page, filters.pageSize);
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.deal.findMany({
+        where,
+        include: DEAL_INCLUDE,
+        orderBy: { updatedAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.deal.count({ where }),
+    ]);
+    return { data, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
   }
 
   async findOne(organizationId: string, id: string) {

@@ -27,8 +27,17 @@ export class DealsController {
     @Query('stageId') stageId?: string,
     @Query('ownerId') ownerId?: string,
     @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
-    return this.dealsService.findAll(user.organizationId, { pipelineId, stageId, ownerId, status });
+    return this.dealsService.findAll(user.organizationId, {
+      pipelineId,
+      stageId,
+      ownerId,
+      status,
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+    });
   }
 
   @Get(':id')

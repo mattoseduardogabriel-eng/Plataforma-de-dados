@@ -1,5 +1,15 @@
 export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'GESTOR' | 'VENDEDOR' | 'FINANCEIRO' | 'ATENDIMENTO' | 'ANALISTA';
 
+// Envelope devolvido pelos endpoints de listagem paginados (ver
+// backend/src/common/utils/pagination.util.ts).
+export interface Paginated<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export interface User {
   id: string;
   name: string;
