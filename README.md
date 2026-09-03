@@ -73,21 +73,6 @@ npm install
 npm run dev                 # http://localhost:5173
 ```
 
-### Deploy em produção com Neon (connection pooling)
-
-`DATABASE_URL` deve apontar pra connection string **pooled** do Neon (host
-com `-pooler`, ex.: `ep-xxx-pooler.us-east-2.aws.neon.tech`) — é a que o
-app usa em runtime.
-
-`prisma migrate deploy` precisa de uma conexão **direta**, sem pooler —
-configure também `DIRECT_URL` com a connection string sem o `-pooler`
-(mesmo banco/usuário/senha, só o host muda). No painel do Neon: **Connect**
-→ desmarque "Connection pooling" pra ver essa versão.
-
-Sem `DIRECT_URL` configurada, `npm run prisma:deploy` falha (não faz parte
-do `start` normal do servidor, mas quebra o passo de migration do deploy) —
-configure as duas variáveis antes de aplicar essa mudança em produção.
-
 ## Login de demonstração
 
 Após rodar o seed (`npm run prisma:seed` ou automaticamente via Docker Compose), use
