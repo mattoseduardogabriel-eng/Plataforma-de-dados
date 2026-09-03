@@ -29,6 +29,12 @@ export class LeadsService {
     const lead = await this.prisma.lead.create({
       data: {
         ...rest,
+        // Sempre 55 + DDD + 9 dígitos — sem isso, um lead cadastrado à mão
+        // (tela de Leads, "Novo lead") fica com o telefone num formato
+        // diferente do resto da integração, e casamentos por telefone
+        // (webhook do Liro, deep-link "Abrir no Aster") deixam de achar
+        // esse lead.
+        phone: rest.phone ? (normalizePhone(rest.phone) ?? rest.phone) : rest.phone,
         organizationId,
         createdById,
         additionalAssignees: additionalAssigneeIds?.length
@@ -135,7 +141,11 @@ export class LeadsService {
       }
     }
 
-    return this.prisma.lead.update({ where: { id }, data: rest, include: LEAD_INCLUDE });
+    return this.prisma.lead.update({
+      where: { id },
+      data: { ...rest, phone: rest.phone ? (normalizePhone(rest.phone) ?? rest.phone) : rest.phone },
+      include: LEAD_INCLUDE,
+    });
   }
 
   async remove(organizationId: string, id: string) {
