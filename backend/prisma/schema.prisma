@@ -92,6 +92,15 @@ model Organization {
   // falhou (ver saveCredentials), fica sem — nesse caso a verificação é
   // tolerante e só loga aviso, pra não quebrar quem já estava funcionando.
   liroWebhookSigningSecretEncrypted String?
+  // Quantas rodadas SEGUIDAS do sync automático (a cada 5min, ver
+  // LiroCrmSyncScheduler) falharam pra essa organização — zera a cada
+  // sucesso. Usado só pra detectar falha PERSISTENTE (chave revogada,
+  // Liro fora do ar de vez) sem alarme por uma instabilidade passageira
+  // isolada.
+  liroCrmSyncFailureCount Int      @default(0)
+  // Mensagem da última falha do sync automático — só informativo, exibido
+  // na tela de Integrações quando liroCrmSyncFailureCount cruza o limite.
+  liroCrmLastSyncError    String?
 
   personalDataProviderConfig PersonalDataProviderConfig?
 

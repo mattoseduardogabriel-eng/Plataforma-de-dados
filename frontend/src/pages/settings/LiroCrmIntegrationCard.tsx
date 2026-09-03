@@ -116,6 +116,12 @@ export function LiroCrmIntegrationCard({ isAdmin }: { isAdmin: boolean }) {
                 </p>
               </div>
             </div>
+            {status.syncFailing && (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                ⚠ A sincronização automática está falhando há {status.syncFailureCount} rodada(s) seguida(s)
+                {status.lastSyncError ? ` — ${status.lastSyncError}` : ''}. Confira a chave de API e a Base URL.
+              </p>
+            )}
             {isAdmin && (
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={onTest} loading={test.isPending}>

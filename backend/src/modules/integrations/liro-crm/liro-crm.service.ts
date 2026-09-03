@@ -83,6 +83,12 @@ export class LiroCrmService {
       // quando vem contato novo e por isso pode ficar "parado" mesmo com
       // sincronizações rodando normalmente sem achar nada novo pra trazer.
       lastSyncedAt: org.liroCrmLastSyncAttemptAt,
+      // >= 5 rodadas seguidas do sync automático falhando (ver
+      // LiroCrmSyncScheduler) — sinal de problema persistente, não
+      // instabilidade passageira. Zera no próximo sucesso.
+      syncFailing: org.liroCrmSyncFailureCount >= 5,
+      syncFailureCount: org.liroCrmSyncFailureCount,
+      lastSyncError: org.liroCrmLastSyncError,
     };
   }
 
