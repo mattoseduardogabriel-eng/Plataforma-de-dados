@@ -32,6 +32,30 @@ function extractOperatorName(contact: LiroContact): string | undefined {
   return typeof found === 'string' ? found : undefined;
 }
 
+/**
+ * Condições OR pra achar o Lead de um contato do Liro por id vinculado ou
+ * telefone. Além do telefone normalizado exato, cai num fallback pelos 8
+ * dígitos finais (o número em si, sem DDD nem DDI) — cobre um Lead salvo
+ * antes da normalização existir (ou nunca mais tocado desde então), cujo
+ * telefone pode estar sem o 9º dígito e/ou sem o "55" na frente. Essas
+ * variações sempre preservam os últimos 8 dígitos, então usá-los como
+ * último critério é seguro (duas pessoas com os mesmos 8 dígitos finais
+ * mas DDD diferente é praticamente impossível na prática).
+ */
+function buildPhoneMatchConditions(
+  liroContactId: string | undefined,
+  phoneNormalizado: string | null | undefined,
+): Prisma.LeadWhereInput[] {
+  const conditions: Prisma.LeadWhereInput[] = [];
+  if (liroContactId) conditions.push({ liroContactId });
+  if (phoneNormalizado) {
+    conditions.push({ phone: phoneNormalizado });
+    const ultimosDigitos = phoneNormalizado.slice(-8);
+    if (ultimosDigitos.length === 8) conditions.push({ phone: { endsWith: ultimosDigitos } });
+  }
+  return conditions;
+}
+
 @Injectable()
 export class LiroCrmService {
   private readonly logger = new Logger(LiroCrmService.name);
@@ -196,7 +220,7 @@ export class LiroCrmService {
       const existing = await this.prisma.lead.findFirst({
         where: {
           organizationId,
-          OR: [{ liroContactId: contact.id }, { phone: phoneNormalizado }],
+          OR: buildPhoneMatchConditions(contact.id, phoneNormalizado),
         },
         include: { deals: { select: { id: true }, take: 1 } },
       });
@@ -211,6 +235,12 @@ export class LiroCrmService {
             documentType: documentType ?? existing.documentType,
             liroContactId: contact.id,
             liroOperatorName: operatorName ?? existing.liroOperatorName,
+            // Autocorrige o telefone salvo pro formato normalizado atual —
+            // sem isso, um lead criado antes da normalização existir (ou
+            // achado só pelo fallback de dígitos finais abaixo) nunca
+            // corrige o próprio campo, e continua dependendo do fallback
+            // pra sempre em vez de casar direto da próxima vez.
+            phone: phoneNormalizado,
           },
         });
         updated += 1;
@@ -477,13 +507,18 @@ export class LiroCrmService {
     const lead = await this.prisma.lead.findFirst({
       where: {
         organizationId: org.id,
-        OR: [
-          ...(contact.id ? [{ liroContactId: contact.id }] : []),
-          ...(phoneNormalizado ? [{ phone: phoneNormalizado }] : []),
-        ],
+        OR: buildPhoneMatchConditions(contact.id, phoneNormalizado),
       },
     });
     if (!lead) return;
+
+    // Achou só pelo fallback de dígitos finais (ou por liroContactId, com
+    // o telefone salvo desatualizado) — corrige o campo agora, assim os
+    // próximos eventos já casam direto pelo telefone normalizado, sem
+    // precisar do fallback de novo.
+    if (phoneNormalizado && lead.phone !== phoneNormalizado) {
+      await this.prisma.lead.update({ where: { id: lead.id }, data: { phone: phoneNormalizado } });
+    }
 
     if (payload.event === 'conversation_moved') {
       await this.moverNegocioParaEtapaMapeada(org.id, lead.id, payload);

@@ -97,9 +97,14 @@ export class LeadsService {
       throw new NotFoundException('Informe um telefone para buscar.');
     }
     const normalized = normalizePhone(phone) ?? phone;
-    const digits = phone.replace(/\D/g, '');
     const orConditions: Prisma.LeadWhereInput[] = [{ phone: normalized }];
-    if (digits) orConditions.push({ phone: { contains: digits } });
+    // Fallback pra lead salvo antes da normalização existir (ou nunca
+    // tocado desde então): o telefone salvo pode estar sem o 9º dígito
+    // e/ou sem o "55" na frente, mas os 8 dígitos finais (o número em si)
+    // são sempre os mesmos — mesmo critério usado no lado do webhook (ver
+    // buildPhoneMatchConditions em liro-crm.service.ts).
+    const ultimosDigitos = normalized.slice(-8);
+    if (ultimosDigitos.length === 8) orConditions.push({ phone: { endsWith: ultimosDigitos } });
     const lead = await this.prisma.lead.findFirst({
       where: {
         organizationId,
