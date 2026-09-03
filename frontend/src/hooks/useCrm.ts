@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Activity, CrmOverview, Deal, Lead, Pipeline, TeamPerformance } from '@/types';
+import type { Activity, CrmOverview, Deal, Lead, Paginated, Pipeline, TeamPerformance } from '@/types';
 
 export function usePipelines() {
   return useQuery({
@@ -26,10 +26,10 @@ export function useDeletePipelineStage() {
   });
 }
 
-export function useLeads(params: { status?: string; search?: string } = {}) {
+export function useLeads(params: { status?: string; search?: string; page?: number; pageSize?: number } = {}) {
   return useQuery({
     queryKey: ['crm', 'leads', params],
-    queryFn: async () => (await api.get<Lead[]>('/crm/leads', { params })).data,
+    queryFn: async () => (await api.get<Paginated<Lead>>('/crm/leads', { params: { page: 1, pageSize: 25, ...params } })).data,
   });
 }
 

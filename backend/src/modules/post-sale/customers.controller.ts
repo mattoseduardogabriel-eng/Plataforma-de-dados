@@ -40,6 +40,8 @@ export class CustomersController {
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: string,
     @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
     return this.customersService.findAll(user.organizationId, {
       name,
@@ -52,6 +54,8 @@ export class CustomersController {
       sortBy: sortBy as any,
       sortDir: sortDir as any,
       search,
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
     });
   }
 

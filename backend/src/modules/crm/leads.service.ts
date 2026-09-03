@@ -4,6 +4,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
 import { normalizePhone } from '../../common/utils/phone.util';
+import { normalizePagination } from '../../common/utils/pagination.util';
 
 export type SaveToWalletResultado =
   | { leadId: string; status: 'criado'; customerId: string }
@@ -48,7 +49,7 @@ export class LeadsService {
 
   async findAll(
     organizationId: string,
-    filters: { status?: string; assignedToId?: string; search?: string },
+    filters: { status?: string; assignedToId?: string; search?: string; page?: number; pageSize?: number },
   ) {
     const where: Prisma.LeadWhereInput = {
       organizationId,
@@ -68,11 +69,18 @@ export class LeadsService {
             ]
           : undefined,
     };
-    return this.prisma.lead.findMany({
-      where,
-      include: LEAD_INCLUDE,
-      orderBy: { createdAt: 'desc' },
-    });
+    const { page, pageSize } = normalizePagination(filters.page, filters.pageSize);
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.lead.findMany({
+        where,
+        include: LEAD_INCLUDE,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.lead.count({ where }),
+    ]);
+    return { data, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
   }
 
   async findOne(organizationId: string, id: string) {

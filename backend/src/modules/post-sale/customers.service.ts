@@ -6,6 +6,7 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { AuditService } from '../audit/audit.service';
 import { CustomerFieldsService } from './customer-fields.service';
 import { normalizePhone } from '../../common/utils/phone.util';
+import { normalizePagination } from '../../common/utils/pagination.util';
 
 export interface ImportCustomersResult {
   created: number;
@@ -28,6 +29,14 @@ export interface CustomerListFilters {
   sortDir?: 'asc' | 'desc';
   /** Mantido por compatibilidade com a busca antiga (nome ou documento). */
   search?: string;
+  // Opcional de propósito: a tela de Carteira de Clientes depende de
+  // receber TODOS os filtrados numa chamada só pra "selecionar todos os
+  // filtrados"/"excluir todos os filtrados" funcionarem certo — só pagina
+  // quando o chamador pede explicitamente (page informado), devolvendo
+  // nesse caso um envelope { data, total, page, pageSize, totalPages } em
+  // vez do array direto.
+  page?: number;
+  pageSize?: number;
 }
 
 const SORTABLE_COLUMNS: NonNullable<CustomerListFilters['sortBy']>[] = [
@@ -86,7 +95,16 @@ export class CustomersService {
         ? [{ [filters.sortBy]: filters.sortDir ?? 'asc' } as Prisma.CustomerOrderByWithRelationInput]
         : [{ churnRiskScore: 'desc' }, { createdAt: 'desc' }];
 
-    return this.prisma.customer.findMany({ where, orderBy });
+    if (filters.page === undefined) {
+      return this.prisma.customer.findMany({ where, orderBy });
+    }
+
+    const { page, pageSize } = normalizePagination(filters.page, filters.pageSize);
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.customer.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
+      this.prisma.customer.count({ where }),
+    ]);
+    return { data, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
   }
 
   /**

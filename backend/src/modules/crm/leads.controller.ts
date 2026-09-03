@@ -26,8 +26,16 @@ export class LeadsController {
     @Query('status') status?: string,
     @Query('assignedToId') assignedToId?: string,
     @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
-    return this.leadsService.findAll(user.organizationId, { status, assignedToId, search });
+    return this.leadsService.findAll(user.organizationId, {
+      status,
+      assignedToId,
+      search,
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+    });
   }
 
   // Rota fixa: precisa vir antes de ':id', senão o Nest casa "by-phone"

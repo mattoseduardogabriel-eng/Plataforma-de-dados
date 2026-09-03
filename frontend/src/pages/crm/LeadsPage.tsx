@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Wallet, Check } from 'lucide-react';
+import { Plus, Search, Wallet, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, Card, Input, Label, Select, Spinner, Badge, EmptyState } from '@/components/ui/primitives';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@/components/ui/table';
@@ -21,7 +21,9 @@ const STATUS_TONE: Record<LeadStatus, 'neutral' | 'info' | 'danger' | 'success'>
 export function LeadsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
-  const { data: leads, isLoading } = useLeads({ search: search || undefined, status: status || undefined });
+  const [page, setPage] = useState(1);
+  const { data: leadsPage, isLoading } = useLeads({ search: search || undefined, status: status || undefined, page });
+  const leads = leadsPage?.data;
   const createLead = useCreateLead();
   const saveToWallet = useSaveLeadToWallet();
   const saveManyToWallet = useSaveLeadsToWalletBulk();
@@ -111,9 +113,24 @@ export function LeadsPage() {
       <Card className="mb-4 flex flex-wrap items-center gap-3 p-4">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input className="pl-9" placeholder="Buscar por nome ou documento" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input
+            className="pl-9"
+            placeholder="Buscar por nome ou documento"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+          />
         </div>
-        <Select className="w-48" value={status} onChange={(e) => setStatus(e.target.value)}>
+        <Select
+          className="w-48"
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            setPage(1);
+          }}
+        >
           <option value="">Todos os status</option>
           <option value="NOVO">Novo</option>
           <option value="QUALIFICANDO">Qualificando</option>
@@ -182,6 +199,32 @@ export function LeadsPage() {
             ))}
           </Tbody>
         </Table>
+      )}
+
+      {leadsPage && leadsPage.totalPages > 1 && (
+        <div className="mt-3 flex items-center justify-between text-sm text-slate-500">
+          <span>
+            Página {leadsPage.page} de {leadsPage.totalPages} — {leadsPage.total} lead(s) no total
+          </span>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={leadsPage.page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <ChevronLeft className="h-4 w-4" /> Anterior
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={leadsPage.page >= leadsPage.totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Próxima <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       )}
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title="Novo lead">
