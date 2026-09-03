@@ -9,7 +9,11 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: false });
+  // rawBody: true dá acesso a req.rawBody nos handlers — necessário pra
+  // validar a assinatura HMAC (X-Liro-Signature) do webhook do Liro CRM
+  // contra os bytes exatos que ele assinou (reserializar o JSON já
+  // parseado nem sempre reproduz o byte a byte original).
+  const app = await NestFactory.create(AppModule, { cors: false, rawBody: true });
 
   app.use(helmet());
   app.use(compression());

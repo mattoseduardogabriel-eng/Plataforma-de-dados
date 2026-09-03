@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Post, Put, RawBodyRequest, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { LiroCrmService } from './liro-crm.service';
@@ -86,8 +87,13 @@ export class LiroCrmController {
   @Public()
   @HttpCode(200)
   @Post('webhook/:token')
-  async receiveWebhook(@Param('token') token: string, @Body() payload: Record<string, unknown>) {
-    await this.liroCrmService.handleInboundWebhook(token, payload);
+  async receiveWebhook(
+    @Param('token') token: string,
+    @Body() payload: Record<string, unknown>,
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('x-liro-signature') signature?: string,
+  ) {
+    await this.liroCrmService.handleInboundWebhook(token, payload, req.rawBody?.toString('utf8'), signature);
     return { ok: true };
   }
 }
