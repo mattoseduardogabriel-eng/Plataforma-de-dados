@@ -122,6 +122,7 @@ model Organization {
   crivoDecisions    CrivoDecision[]
   customerFieldDefinitions CustomerFieldDefinition[]
   sectors                  OrganizationSector[]
+  importJobs               ImportJob[]
 
   @@map("organizations")
 }
@@ -556,6 +557,47 @@ model Customer {
 
   @@index([organizationId, status])
   @@map("customers")
+}
+
+enum ImportJobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+// Job de importação em massa (hoje só planilha de Clientes) processado em
+// segundo plano — a requisição HTTP só cria o job e devolve o id na hora,
+// sem esperar milhares de linhas serem processadas uma a uma (o que
+// travava a requisição e arriscava timeout numa planilha grande). O front
+// consulta o progresso (GET .../import/:jobId) até status virar DONE ou
+// FAILED. Sem fila de verdade (Redis/BullMQ) de propósito — processamento
+// assíncrono em memória já resolve o problema real (requisição travada) e
+// não pede infra nova; ver ImportJobsService.
+model ImportJob {
+  id             String          @id @default(uuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  // "customers" é o único tipo hoje — string aberta em vez de enum pra
+  // não precisar migração toda vez que um novo tipo de importação surgir.
+  type           String
+  status         ImportJobStatus @default(PENDING)
+  totalRows      Int
+  processedRows  Int             @default(0)
+  created        Int             @default(0)
+  updated        Int             @default(0)
+  // [{ row, name?, message }] — mesmo formato que ImportCustomersResult.errors.
+  errors         Json?
+  // Preenchido só se o job inteiro falhar de forma inesperada (ex: erro de
+  // banco no meio do lote) — diferente de uma linha individual com
+  // problema, que vai pra `errors` e não interrompe o resto.
+  errorMessage   String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([organizationId, createdAt])
+  @@map("import_jobs")
 }
 
 enum ContractStatus {

@@ -1,10 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { FileSpreadsheet, Upload } from 'lucide-react';
 import { Dialog } from '@/components/ui/dialog';
-import { Alert, Badge, Button, EmptyState } from '@/components/ui/primitives';
+import { Alert, Badge, Button, EmptyState, Spinner } from '@/components/ui/primitives';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@/components/ui/table';
-import { useImportCustomers, type ImportCustomersResult } from '@/hooks/usePostSale';
+import { useStartImportCustomers, useImportJob } from '@/hooks/usePostSale';
 import { useToast } from '@/components/ui/toast';
 import { extractErrorMessage } from '@/lib/auth-context';
 
@@ -107,15 +107,16 @@ function parseSheet(file: File): Promise<ParsedRow[]> {
 export function ImportCustomersDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [parseError, setParseError] = useState<string | null>(null);
-  const [result, setResult] = useState<ImportCustomersResult | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const importCustomers = useImportCustomers();
+  const startImport = useStartImportCustomers();
+  const { data: job } = useImportJob(jobId);
   const { toast } = useToast();
 
   const reset = () => {
     setRows([]);
     setParseError(null);
-    setResult(null);
+    setJobId(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -127,7 +128,7 @@ export function ImportCustomersDialog({ open, onClose }: { open: boolean; onClos
   const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setResult(null);
+    setJobId(null);
     setParseError(null);
     try {
       const parsed = await parseSheet(file);
@@ -143,17 +144,30 @@ export function ImportCustomersDialog({ open, onClose }: { open: boolean; onClos
 
   const onImport = async () => {
     try {
-      const outcome = await importCustomers.mutateAsync(rows as unknown as Record<string, unknown>[]);
-      setResult(outcome);
-      toast({
-        tone: 'success',
-        title: 'Importação concluída',
-        description: `${outcome.created} criado(s), ${outcome.updated} atualizado(s)${outcome.errors.length ? `, ${outcome.errors.length} com erro` : ''}.`,
-      });
+      const { jobId: novoJobId } = await startImport.mutateAsync(rows as unknown as Record<string, unknown>[]);
+      setJobId(novoJobId);
     } catch (err) {
       toast({ tone: 'error', title: 'Erro ao importar', description: extractErrorMessage(err) });
     }
   };
+
+  // Avisa quando o job termina (rodando em segundo plano — só o toast
+  // marca o momento certo, já que o polling em si não devolve um evento).
+  const jobJaAvisado = useRef<string | null>(null);
+  useEffect(() => {
+    if (!job || job.status !== 'DONE' || jobJaAvisado.current === job.id) return;
+    jobJaAvisado.current = job.id;
+    toast({
+      tone: 'success',
+      title: 'Importação concluída',
+      description: `${job.created} criado(s), ${job.updated} atualizado(s)${job.errors?.length ? `, ${job.errors.length} com erro` : ''}.`,
+    });
+  }, [job, toast]);
+  useEffect(() => {
+    if (!job || job.status !== 'FAILED' || jobJaAvisado.current === job.id) return;
+    jobJaAvisado.current = job.id;
+    toast({ tone: 'error', title: 'Erro ao importar', description: job.errorMessage ?? 'Erro desconhecido.' });
+  }, [job, toast]);
 
   return (
     <Dialog open={open} onClose={onClosePopup} title="Importar clientes por planilha" className="max-w-3xl">
@@ -166,7 +180,7 @@ export function ImportCustomersDialog({ open, onClose }: { open: boolean; onClos
           Clientes existentes (mesmo documento) são atualizados; os demais são criados.
         </p>
 
-        {!rows.length && !result && (
+        {!rows.length && !jobId && (
           <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-slate-300 p-8 text-center hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50">
             <FileSpreadsheet className="h-8 w-8 text-slate-400" />
             <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Clique para escolher o arquivo</span>
@@ -176,7 +190,7 @@ export function ImportCustomersDialog({ open, onClose }: { open: boolean; onClos
 
         {parseError && <Alert tone="danger">{parseError}</Alert>}
 
-        {rows.length > 0 && !result && (
+        {rows.length > 0 && !jobId && (
           <>
             <div className="max-h-72 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700">
               <Table>
@@ -206,7 +220,7 @@ export function ImportCustomersDialog({ open, onClose }: { open: boolean; onClos
               <Badge tone="neutral">{rows.length} linha(s) reconhecida(s)</Badge>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={reset}>Escolher outro arquivo</Button>
-                <Button onClick={onImport} loading={importCustomers.isPending}>
+                <Button onClick={onImport} loading={startImport.isPending}>
                   <Upload className="h-4 w-4" /> Importar {rows.length} cliente(s)
                 </Button>
               </div>
@@ -214,23 +228,52 @@ export function ImportCustomersDialog({ open, onClose }: { open: boolean; onClos
           </>
         )}
 
-        {result && (
+        {jobId && (!job || job.status === 'PENDING' || job.status === 'RUNNING') && (
+          <div className="space-y-3 py-6 text-center">
+            <Spinner className="mx-auto h-6 w-6" />
+            <p className="text-sm text-slate-500">
+              Importando em segundo plano — pode fechar essa janela, a importação continua rodando.
+            </p>
+            {job && (
+              <>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all"
+                    style={{ width: `${job.totalRows ? Math.round((job.processedRows / job.totalRows) * 100) : 0}%` }}
+                  />
+                </div>
+                <p className="text-xs text-slate-400">
+                  {job.processedRows} de {job.totalRows} linha(s)
+                </p>
+              </>
+            )}
+          </div>
+        )}
+
+        {job?.status === 'DONE' && (
           <div className="space-y-3">
             <div className="flex gap-2">
-              <Badge tone="success">{result.created} criado(s)</Badge>
-              <Badge tone="neutral">{result.updated} atualizado(s)</Badge>
-              {result.errors.length > 0 && <Badge tone="danger">{result.errors.length} com erro</Badge>}
+              <Badge tone="success">{job.created} criado(s)</Badge>
+              <Badge tone="neutral">{job.updated} atualizado(s)</Badge>
+              {(job.errors?.length ?? 0) > 0 && <Badge tone="danger">{job.errors!.length} com erro</Badge>}
             </div>
-            {result.errors.length > 0 && (
+            {(job.errors?.length ?? 0) > 0 && (
               <div className="max-h-48 overflow-auto rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-700">
-                {result.errors.map((e, i) => (
+                {job.errors!.map((e, i) => (
                   <p key={i} className="text-red-600 dark:text-red-400">
                     Linha {e.row} ({e.name ?? 'sem nome'}): {e.message}
                   </p>
                 ))}
               </div>
             )}
-            {!result.errors.length && <EmptyState title="Tudo certo" description="Todas as linhas foram importadas com sucesso." />}
+            {!job.errors?.length && <EmptyState title="Tudo certo" description="Todas as linhas foram importadas com sucesso." />}
+            <Button className="w-full" onClick={onClosePopup}>Fechar</Button>
+          </div>
+        )}
+
+        {job?.status === 'FAILED' && (
+          <div className="space-y-3">
+            <Alert tone="danger">{job.errorMessage ?? 'A importação falhou por um motivo desconhecido.'}</Alert>
             <Button className="w-full" onClick={onClosePopup}>Fechar</Button>
           </div>
         )}

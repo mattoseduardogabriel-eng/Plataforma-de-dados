@@ -21,10 +21,19 @@ export class CustomersController {
     return this.customersService.create(user.organizationId, dto);
   }
 
+  // Cria o job e devolve na hora — processamento roda em segundo plano
+  // (ver CustomersService.startImportJob). O front consulta o progresso
+  // em GET .../import/:jobId até o status virar DONE ou FAILED.
   @Roles(Role.ADMIN, Role.GESTOR, Role.ATENDIMENTO)
   @Post('import')
-  importMany(@CurrentUser() user: AuthenticatedUser, @Body() dto: ImportCustomersDto) {
-    return this.customersService.importMany(user.organizationId, user.id, dto.customers);
+  startImport(@CurrentUser() user: AuthenticatedUser, @Body() dto: ImportCustomersDto) {
+    return this.customersService.startImportJob(user.organizationId, user.id, dto.customers);
+  }
+
+  @Roles(Role.ADMIN, Role.GESTOR, Role.ATENDIMENTO)
+  @Get('import/:jobId')
+  getImportJob(@CurrentUser() user: AuthenticatedUser, @Param('jobId') jobId: string) {
+    return this.customersService.getImportJob(user.organizationId, jobId);
   }
 
   @Get()

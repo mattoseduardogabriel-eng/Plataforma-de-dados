@@ -113,12 +113,40 @@ export interface ImportCustomersResult {
   errors: { row: number; name?: string; message: string }[];
 }
 
-export function useImportCustomers() {
+export interface ImportJob {
+  id: string;
+  status: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED';
+  totalRows: number;
+  processedRows: number;
+  created: number;
+  updated: number;
+  errors: ImportCustomersResult['errors'] | null;
+  errorMessage: string | null;
+}
+
+// A importação roda em segundo plano no backend (planilha grande não trava
+// a requisição) — esse hook cria o job e devolve o id na hora; use
+// useImportJob(jobId) pra acompanhar o progresso até DONE/FAILED.
+export function useStartImportCustomers() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (customers: Record<string, unknown>[]) =>
-      (await api.post<ImportCustomersResult>('/post-sale/customers/import', { customers })).data,
+      (await api.post<{ jobId: string; totalRows: number }>('/post-sale/customers/import', { customers })).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['post-sale', 'customers'] }),
+  });
+}
+
+export function useImportJob(jobId: string | null) {
+  return useQuery({
+    queryKey: ['post-sale', 'customers', 'import-job', jobId],
+    queryFn: async () => (await api.get<ImportJob>(`/post-sale/customers/import/${jobId}`)).data,
+    enabled: !!jobId,
+    // Continua consultando enquanto o job está rodando; para assim que
+    // termina (DONE/FAILED) — sem isso ficaria batendo na API pra sempre.
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'DONE' || status === 'FAILED' ? false : 1000;
+    },
   });
 }
 
