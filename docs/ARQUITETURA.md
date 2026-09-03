@@ -116,3 +116,24 @@ Recharts, React Hook Form.
   transparente e auditável: cada critério avaliado (situação cadastral, score,
   pendências, risco de churn) fica registrado com o resultado individual (`OK` /
   `ALERTA` / `BLOQUEIO`) que levou à decisão final.
+- **Funil de Vendas em tempo real (SSE)**: `RealtimeService`
+  (`backend/src/modules/realtime`) é um barramento de eventos em memória
+  (RxJS `Subject`, sem Redis) — `DealsService` e `LiroCrmService` publicam
+  `deal-changed` sempre que um negócio muda (drag no próprio Aster,
+  webhook do Liro CRM movendo o card, exclusão), e `GET /api/realtime/deals`
+  (`@Sse`) transmite isso pra quem está com o Funil aberto. O front
+  (`useRealtimeDeals`) usa `fetch` + `ReadableStream` em vez de
+  `EventSource` nativo — `EventSource` não manda header customizado, e o
+  login usa Bearer token, não cookie. Mantém um poll de segurança bem
+  espaçado (60s) só pra cobrir a conexão SSE caindo sem conseguir
+  reconectar; era um poll de 5s antes disso existir. Limite conhecido: só
+  alcança quem está conectado à MESMA instância do processo (rodando mais
+  de uma réplica, um evento publicado numa não chega em quem está
+  conectado a outra) — aceitável pro volume atual, Redis pub/sub seria o
+  próximo passo se isso virar problema de verdade.
+- **Code-splitting por rota**: `App.tsx` carrega cada página com
+  `React.lazy()` (chunk próprio por rota, baixado só quando a rota é
+  visitada) em vez de tudo num bundle só — o bundle inicial caiu de
+  ~376KB gzip pra ~105KB gzip. `xlsx` (import de planilha de clientes) e
+  `recharts` (gráficos do dashboard) são as duas libs mais pesadas e
+  agora só entram em uso pra quem realmente visita essas telas.

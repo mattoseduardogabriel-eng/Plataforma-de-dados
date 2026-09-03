@@ -13,9 +13,10 @@ import { SectorsService } from './sectors.service';
 import { SectorsController } from './sectors.controller';
 import { LiroCrmModule } from '../integrations/liro-crm/liro-crm.module';
 import { AuditModule } from '../audit/audit.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
-  imports: [LiroCrmModule, AuditModule],
+  imports: [LiroCrmModule, AuditModule, RealtimeModule],
   controllers: [
     PipelinesController,
     LeadsController,
