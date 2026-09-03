@@ -501,16 +501,36 @@ export class LiroCrmService {
     }
 
     const contact = payload.contact as { id?: string; phoneNumber?: string } | undefined;
-    if (!contact) return;
+    if (!contact) {
+      this.logger.warn(`Webhook do Liro CRM (org ${org.id}, evento ${payload.event}) sem "contact" no payload — ignorado.`);
+      return;
+    }
     const phoneNormalizado = contact.phoneNumber ? normalizePhone(contact.phoneNumber) : null;
 
-    const lead = await this.prisma.lead.findFirst({
-      where: {
-        organizationId: org.id,
-        OR: buildPhoneMatchConditions(contact.id, phoneNormalizado),
-      },
+    // Busca TODOS os leads que batem (pode haver mais de um — dado legado
+    // duplicado, ou um lead antigo achado só pelo fallback de dígitos
+    // finais convivendo com outro mais novo) e escolhe o melhor candidato
+    // nessa ordem: id vinculado do Liro > telefone normalizado exato >
+    // (entre os achados só pelo fallback) o que tiver negócio aberto >
+    // senão o primeiro. Sem essa priorização, `findFirst` podia devolver
+    // um lead "errado" (sem negócio nenhum) mesmo com o certo disponível,
+    // e o evento não movia nada, silenciosamente.
+    const candidatos = await this.prisma.lead.findMany({
+      where: { organizationId: org.id, OR: buildPhoneMatchConditions(contact.id, phoneNormalizado) },
+      include: { deals: { where: { status: 'ABERTO' }, select: { id: true }, take: 1 } },
     });
-    if (!lead) return;
+    const lead =
+      candidatos.find((l) => contact.id && l.liroContactId === contact.id) ??
+      candidatos.find((l) => phoneNormalizado && l.phone === phoneNormalizado) ??
+      candidatos.find((l) => l.deals.length > 0) ??
+      candidatos[0];
+
+    if (!lead) {
+      this.logger.warn(
+        `Webhook do Liro CRM (org ${org.id}, evento ${payload.event}): nenhum lead encontrado para contactId=${contact.id ?? '—'} phone=${phoneNormalizado ?? '—'} — ignorado.`,
+      );
+      return;
+    }
 
     // Achou só pelo fallback de dígitos finais (ou por liroContactId, com
     // o telefone salvo desatualizado) — corrige o campo agora, assim os
@@ -518,6 +538,12 @@ export class LiroCrmService {
     // precisar do fallback de novo.
     if (phoneNormalizado && lead.phone !== phoneNormalizado) {
       await this.prisma.lead.update({ where: { id: lead.id }, data: { phone: phoneNormalizado } });
+    }
+
+    if (candidatos.length > 1) {
+      this.logger.warn(
+        `Webhook do Liro CRM (org ${org.id}): ${candidatos.length} leads bateram para contactId=${contact.id ?? '—'} phone=${phoneNormalizado ?? '—'} — usando o lead ${lead.id} (dado legado duplicado provável, considere revisar).`,
+      );
     }
 
     if (payload.event === 'conversation_moved') {
@@ -532,21 +558,33 @@ export class LiroCrmService {
     leadId: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    const conversation = payload.conversation as { kanbanStage?: { id?: string } } | undefined;
+    const conversation = payload.conversation as { kanbanStage?: { id?: string; name?: string } } | undefined;
     const liroStageId = conversation?.kanbanStage?.id;
-    if (!liroStageId) return;
+    if (!liroStageId) {
+      this.logger.warn(`conversation_moved (org ${organizationId}, lead ${leadId}): payload sem conversation.kanbanStage.id — ignorado.`);
+      return;
+    }
 
     const deal = await this.prisma.deal.findFirst({
       where: { organizationId, leadId, status: 'ABERTO' },
       orderBy: { updatedAt: 'desc' },
       include: { pipeline: true },
     });
-    if (!deal) return;
+    if (!deal) {
+      this.logger.warn(`conversation_moved (org ${organizationId}, lead ${leadId}): lead não tem negócio ABERTO no funil — nada pra mover.`);
+      return;
+    }
 
     const etapaAlvo = await this.prisma.pipelineStage.findFirst({
       where: { pipelineId: deal.pipelineId, liroKanbanStageId: liroStageId },
     });
-    if (!etapaAlvo || etapaAlvo.id === deal.stageId) return;
+    if (!etapaAlvo) {
+      this.logger.warn(
+        `conversation_moved (org ${organizationId}, deal ${deal.id}): etapa do Liro "${conversation?.kanbanStage?.name ?? liroStageId}" (id ${liroStageId}) não está mapeada pra nenhuma etapa do pipeline ${deal.pipelineId} — configure em Configurações > Integrações > Liro CRM.`,
+      );
+      return;
+    }
+    if (etapaAlvo.id === deal.stageId) return; // já está lá — nada a fazer, não é erro
 
     await this.prisma.deal.update({ where: { id: deal.id }, data: { stageId: etapaAlvo.id } });
     await this.auditService.log({
