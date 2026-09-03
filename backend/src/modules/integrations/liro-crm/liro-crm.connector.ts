@@ -190,10 +190,18 @@ export class LiroCrmConnector {
     );
   }
 
-  /** Idempotente do lado do Liro: registrar de novo com a mesma URL não duplica. */
+  /**
+   * Idempotente do lado do Liro: registrar de novo com a mesma URL não
+   * duplica — inclusive faz backfill de signingSecret se o webhook já
+   * existia sem um (ver API_EXTERNA.md do Liro). `signingSecret` só vem
+   * preenchido em versões do Liro que já suportam assinatura HMAC.
+   */
   registerWebhook(creds: LiroCredentials, url: string) {
-    return this.request<{ id: string; url: string; onConversationMoved: boolean }>(creds, 'post', '/webhooks', {
-      data: { url },
-    });
+    return this.request<{ id: string; url: string; onConversationMoved: boolean; signingSecret?: string }>(
+      creds,
+      'post',
+      '/webhooks',
+      { data: { url } },
+    );
   }
 }

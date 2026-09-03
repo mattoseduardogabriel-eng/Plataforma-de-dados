@@ -41,6 +41,19 @@ domínio público onde ela está hospedada; sem isso, o registro é pulado
 (logado como aviso) e o resto da integração continua funcionando
 normalmente, só sem o lado Liro → Aster em tempo real.
 
+**Assinatura das entregas (HMAC-SHA256).** O registro devolve um
+`signingSecret`, guardado cifrado (mesmo esquema da chave de API, ver
+`Organization.liroWebhookSigningSecretEncrypted`). Toda entrega recebida
+em `POST /api/integrations/liro-crm/webhook/:token` traz o header
+`X-Liro-Signature: sha256=<hmac hex>`, calculado pelo Liro sobre o corpo
+bruto da requisição — a Plataforma recalcula o mesmo HMAC (por isso
+`main.ts` liga `rawBody: true`, pra comparar os bytes exatos assinados,
+não o JSON reserializado) e rejeita a entrega se não bater
+(`LiroCrmService.verifyWebhookSignature`). A verificação é tolerante de
+propósito: sem segredo salvo ainda, ou sem o header (Liro desatualizado),
+a entrega é aceita mesmo assim — só loga aviso — pra não quebrar quem já
+estava funcionando antes desse recurso existir.
+
 ## O que a sincronização de contatos faz
 
 `POST /api/integrations/liro-crm/sync` busca contatos alterados desde a

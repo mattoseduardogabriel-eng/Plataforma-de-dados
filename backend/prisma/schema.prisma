@@ -84,6 +84,14 @@ model Organization {
   // o id da organização de propósito, pra não dar pra adivinhar/forjar
   // eventos só sabendo o id. Gerado ao conectar (ver LiroCrmService).
   liroWebhookToken       String?   @unique
+  // Segredo (cifrado, mesmo esquema de liroCrmApiKeyEncrypted) que o Liro
+  // devolve ao registrar o webhook — usado pra validar o header
+  // X-Liro-Signature de cada entrega e confirmar que veio do Liro de
+  // verdade (ver LiroCrmService.handleInboundWebhook). Nullable: integração
+  // conectada antes desse recurso existir, ou registro automático que
+  // falhou (ver saveCredentials), fica sem — nesse caso a verificação é
+  // tolerante e só loga aviso, pra não quebrar quem já estava funcionando.
+  liroWebhookSigningSecretEncrypted String?
 
   personalDataProviderConfig PersonalDataProviderConfig?
 

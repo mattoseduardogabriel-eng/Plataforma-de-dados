@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { DocumentType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { SecretCipher } from '../../../common/crypto/secret-cipher';
@@ -114,7 +114,16 @@ export class LiroCrmService {
     const publicUrl = this.configService.get<string>('PUBLIC_API_URL');
     if (publicUrl) {
       try {
-        await this.connector.registerWebhook(creds, `${publicUrl.replace(/\/+$/, '')}/api/integrations/liro-crm/webhook/${webhookToken}`);
+        const registro = await this.connector.registerWebhook(
+          creds,
+          `${publicUrl.replace(/\/+$/, '')}/api/integrations/liro-crm/webhook/${webhookToken}`,
+        );
+        if (registro.signingSecret) {
+          await this.prisma.organization.update({
+            where: { id: organizationId },
+            data: { liroWebhookSigningSecretEncrypted: this.cipher.encrypt(registro.signingSecret) },
+          });
+        }
       } catch (error) {
         this.logger.warn(
           `Não foi possível registrar o webhook de mudança de etapa no Liro CRM (org ${organizationId}): ${
@@ -149,6 +158,7 @@ export class LiroCrmService {
         liroCrmLastSyncedAt: null,
         liroCrmLastSyncAttemptAt: null,
         liroWebhookToken: null,
+        liroWebhookSigningSecretEncrypted: null,
       },
     });
     await this.auditService.log({
@@ -486,6 +496,44 @@ export class LiroCrmService {
   }
 
   /**
+   * Confere o header X-Liro-Signature (sha256=<hmac hex>) contra o corpo
+   * bruto recebido. Tolerante de propósito — não derruba a integração de
+   * quem já estava funcionando antes desse recurso existir: só bloqueia
+   * quando existe segredo salvo E header presente E eles não batem (prova
+   * de adulteração/forjadura). Sem segredo salvo ou sem header, deixa
+   * passar com um aviso no log (ver saveCredentials — backfill acontece na
+   * próxima reconexão/registro).
+   */
+  private verifyWebhookSignature(
+    org: { id: string; liroWebhookSigningSecretEncrypted: string | null },
+    rawBody: string | undefined,
+    signatureHeader: string | undefined,
+  ): boolean {
+    if (!org.liroWebhookSigningSecretEncrypted) {
+      this.logger.warn(`Webhook do Liro CRM (org ${org.id}): sem segredo salvo ainda — aceitando sem verificar assinatura.`);
+      return true;
+    }
+    if (!signatureHeader) {
+      this.logger.warn(`Webhook do Liro CRM (org ${org.id}): entrega sem header X-Liro-Signature — aceitando (Liro desatualizado?).`);
+      return true;
+    }
+    if (rawBody === undefined) {
+      this.logger.warn(`Webhook do Liro CRM (org ${org.id}): corpo bruto indisponível pra validar assinatura — aceitando.`);
+      return true;
+    }
+
+    const secret = this.cipher.decrypt(org.liroWebhookSigningSecretEncrypted);
+    const esperado = `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`;
+    const recebido = Buffer.from(signatureHeader);
+    const esperadoBuf = Buffer.from(esperado);
+    const valido = recebido.length === esperadoBuf.length && timingSafeEqual(recebido, esperadoBuf);
+    if (!valido) {
+      this.logger.warn(`Webhook do Liro CRM (org ${org.id}): assinatura inválida — entrega rejeitada.`);
+    }
+    return valido;
+  }
+
+  /**
    * Recebe o aviso do Liro (POST /api/integrations/liro-crm/webhook/:token)
    * — hoje dois eventos: `conversation_moved` (card arrastado no Kanban de
    * lá) e `conversation_deleted` (atendimento excluído lá). Os dois
@@ -493,10 +541,19 @@ export class LiroCrmService {
    * justamente pra não disparar de volta um push pro Liro e virar
    * ping-pong infinito entre os dois lados.
    */
-  async handleInboundWebhook(token: string, payload: Record<string, unknown>): Promise<void> {
+  async handleInboundWebhook(
+    token: string,
+    payload: Record<string, unknown>,
+    rawBody?: string,
+    signatureHeader?: string,
+  ): Promise<void> {
     const org = await this.prisma.organization.findFirst({ where: { liroWebhookToken: token } });
     if (!org) {
       this.logger.warn('Webhook do Liro CRM recebido com token desconhecido — ignorado.');
+      return;
+    }
+
+    if (!this.verifyWebhookSignature(org, rawBody, signatureHeader)) {
       return;
     }
 
