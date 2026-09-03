@@ -5,6 +5,7 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { AuditService } from '../audit/audit.service';
 import { CustomerFieldsService } from './customer-fields.service';
+import { normalizePhone } from '../../common/utils/phone.util';
 
 export interface ImportCustomersResult {
   created: number;
@@ -51,6 +52,11 @@ export class CustomersService {
     return this.prisma.customer.create({
       data: {
         ...dto,
+        // Sempre 55 + DDD + 9 dígitos — sem isso, um cliente cadastrado à
+        // mão fica com o telefone num formato diferente do resto da
+        // integração, e casamentos por telefone deixam de achar esse
+        // registro.
+        phone: dto.phone ? (normalizePhone(dto.phone) ?? dto.phone) : dto.phone,
         organizationId,
         contractStartDate: dto.contractStartDate ? new Date(dto.contractStartDate) : undefined,
       },
@@ -158,6 +164,7 @@ export class CustomersService {
         const data = {
           ...row,
           document: cleanDocument,
+          phone: row.phone ? (normalizePhone(row.phone) ?? row.phone) : row.phone,
           contractStartDate: row.contractStartDate ? new Date(row.contractStartDate) : undefined,
         };
 
@@ -194,6 +201,7 @@ export class CustomersService {
       where: { id },
       data: {
         ...dto,
+        phone: dto.phone ? (normalizePhone(dto.phone) ?? dto.phone) : dto.phone,
         contractStartDate: dto.contractStartDate ? new Date(dto.contractStartDate) : undefined,
       },
     });
