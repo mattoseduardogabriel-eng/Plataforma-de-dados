@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateActivityDto } from './dto/create-activity.dto';
+import { LiroCrmService } from '../integrations/liro-crm/liro-crm.service';
 
 const ACTIVITY_INCLUDE = {
   assignedTo: { select: { id: true, name: true } },
@@ -11,10 +12,13 @@ const ACTIVITY_INCLUDE = {
 
 @Injectable()
 export class ActivitiesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly liroCrmService: LiroCrmService,
+  ) {}
 
-  create(organizationId: string, createdById: string, dto: CreateActivityDto) {
-    return this.prisma.activity.create({
+  async create(organizationId: string, createdById: string, dto: CreateActivityDto) {
+    const activity = await this.prisma.activity.create({
       data: {
         organizationId,
         createdById,
@@ -28,6 +32,12 @@ export class ActivitiesService {
       },
       include: ACTIVITY_INCLUDE,
     });
+
+    // Sincronização de tarefas com o Liro CRM — melhor esforço, não
+    // bloqueia a resposta (ver LiroCrmService.pushTaskCreate).
+    this.liroCrmService.pushTaskCreate(organizationId, activity.id).catch(() => {});
+
+    return activity;
   }
 
   findAll(organizationId: string, filters: { dealId?: string; leadId?: string; assignedToId?: string }) {
@@ -49,7 +59,14 @@ export class ActivitiesService {
     if (!activity) {
       throw new NotFoundException('Atividade não encontrada.');
     }
-    return this.prisma.activity.update({ where: { id }, data: { doneAt: new Date() } });
+    const updated = await this.prisma.activity.update({ where: { id }, data: { doneAt: new Date() } });
+
+    // Reflete no Liro mesmo pra uma tarefa que nasceu lá (origin='liro')
+    // — a pessoa pode ter concluído por aqui, e o Liro precisa mostrar
+    // isso também ("espelha tudo", nas duas direções).
+    this.liroCrmService.pushTaskUpdate(organizationId, id).catch(() => {});
+
+    return updated;
   }
 
   async remove(organizationId: string, id: string) {
@@ -58,6 +75,7 @@ export class ActivitiesService {
       throw new NotFoundException('Atividade não encontrada.');
     }
     await this.prisma.activity.delete({ where: { id } });
+    this.liroCrmService.pushTaskDelete(organizationId, activity.externalId).catch(() => {});
   }
 
   // "Limpar concluídas" na tela de Tarefas — apaga só as JÁ marcadas como
@@ -65,9 +83,19 @@ export class ActivitiesService {
   // (assignedToId opcional: 'minhas' vs 'todas da equipe'). Nunca mexe em
   // tarefa pendente, mesmo que o filtro passado seja vazio.
   async removeCompleted(organizationId: string, filters: { assignedToId?: string }) {
-    const { count } = await this.prisma.activity.deleteMany({
-      where: { organizationId, assignedToId: filters.assignedToId, doneAt: { not: null } },
-    });
+    const where = { organizationId, assignedToId: filters.assignedToId, doneAt: { not: null } } satisfies Prisma.ActivityWhereInput;
+    // Precisa buscar ANTES de apagar — deleteMany não devolve as linhas
+    // afetadas, e cada uma precisa do próprio externalId pra empurrar a
+    // exclusão pro Liro (ver LiroCrmService.pushTaskDelete).
+    const afetadas = await this.prisma.activity.findMany({ where, select: { id: true, externalId: true } });
+    const { count } = await this.prisma.activity.deleteMany({ where });
+
+    // Cada exclusão sincroniza pro Liro individualmente, melhor esforço,
+    // sem bloquear a resposta desse "limpar tudo".
+    for (const atividade of afetadas) {
+      this.liroCrmService.pushTaskDelete(organizationId, atividade.externalId).catch(() => {});
+    }
+
     return { removed: count };
   }
 }

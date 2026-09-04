@@ -47,6 +47,16 @@ export interface LiroKanbanStage {
   order: number;
 }
 
+export interface UpsertLiroTaskInput {
+  externalId: string;
+  title: string;
+  dueDate?: string | null;
+  done?: boolean;
+  assignedUserEmail?: string | null;
+  createdByEmail?: string | null;
+  contactPhoneNumber?: string | null;
+}
+
 /**
  * Cliente HTTP fiel à "API externa do Liro CRM" (server-to-server, chave
  * `liro_<id>_<segredo>` no header Authorization). Ver
@@ -60,7 +70,7 @@ export class LiroCrmConnector {
 
   private async request<T>(
     creds: LiroCredentials,
-    method: 'get' | 'post' | 'patch',
+    method: 'get' | 'post' | 'patch' | 'delete',
     path: string,
     options: { params?: Record<string, unknown>; data?: unknown } = {},
   ): Promise<T> {
@@ -203,5 +213,39 @@ export class LiroCrmConnector {
       '/webhooks',
       { data: { url } },
     );
+  }
+
+  /**
+   * Cria ou atualiza (upsert por `externalId` = id da Activity aqui na
+   * Aster) uma tarefa do lado do Liro — ver seção "Tarefas" em
+   * API_EXTERNA.md do Liro CRM. Idempotente: chamar de novo com o mesmo
+   * `externalId` atualiza em vez de duplicar, então serve tanto pra
+   * criação quanto pra qualquer edição/conclusão.
+   */
+  upsertTask(creds: LiroCredentials, input: UpsertLiroTaskInput) {
+    return this.request<{ id: string; externalId: string }>(creds, 'post', '/tasks', { data: input });
+  }
+
+  /**
+   * Atualiza campos de uma tarefa já existente do lado do Liro, pelo `id`
+   * de lá (devolvido no upsertTask original) — NUNCA pelo nosso próprio
+   * id (ver comentário em API_EXTERNA.md do Liro sobre PATCH /tasks/:id).
+   * Todos os campos são opcionais, só manda o que mudou.
+   */
+  patchTask(
+    creds: LiroCredentials,
+    liroTaskId: string,
+    input: Partial<Omit<UpsertLiroTaskInput, 'externalId' | 'createdByEmail'>>,
+  ) {
+    return this.request<{ id: string; externalId: string | null }>(creds, 'patch', `/tasks/${liroTaskId}`, { data: input });
+  }
+
+  /**
+   * 404 (NotFoundException) quando essa tarefa nunca chegou a existir do
+   * lado do Liro (ex: falha na criação original) — quem chama decide se
+   * ignora, igual ao moveContactKanbanStage.
+   */
+  deleteTask(creds: LiroCredentials, liroTaskId: string) {
+    return this.request<{ deleted: boolean }>(creds, 'delete', `/tasks/${liroTaskId}`);
   }
 }
