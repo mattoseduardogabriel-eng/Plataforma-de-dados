@@ -51,4 +51,23 @@ export class ActivitiesService {
     }
     return this.prisma.activity.update({ where: { id }, data: { doneAt: new Date() } });
   }
+
+  async remove(organizationId: string, id: string) {
+    const activity = await this.prisma.activity.findFirst({ where: { id, organizationId } });
+    if (!activity) {
+      throw new NotFoundException('Atividade não encontrada.');
+    }
+    await this.prisma.activity.delete({ where: { id } });
+  }
+
+  // "Limpar concluídas" na tela de Tarefas — apaga só as JÁ marcadas como
+  // concluídas (doneAt preenchido), escopadas do mesmo jeito que a lista
+  // (assignedToId opcional: 'minhas' vs 'todas da equipe'). Nunca mexe em
+  // tarefa pendente, mesmo que o filtro passado seja vazio.
+  async removeCompleted(organizationId: string, filters: { assignedToId?: string }) {
+    const { count } = await this.prisma.activity.deleteMany({
+      where: { organizationId, assignedToId: filters.assignedToId, doneAt: { not: null } },
+    });
+    return { removed: count };
+  }
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ActivitiesService } from './activities.service';
 import { CreateActivityDto } from './dto/create-activity.dto';
@@ -29,5 +29,17 @@ export class ActivitiesController {
   @Patch(':id/done')
   markDone(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.activitiesService.markDone(user.organizationId, id);
+  }
+
+  // Rota fixa ('completed') precisa vir ANTES de ':id' — senão o Nest
+  // tentaria casar "completed" como um :id de verdade.
+  @Delete('completed')
+  removeCompleted(@CurrentUser() user: AuthenticatedUser, @Query('assignedToId') assignedToId?: string) {
+    return this.activitiesService.removeCompleted(user.organizationId, { assignedToId });
+  }
+
+  @Delete(':id')
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.activitiesService.remove(user.organizationId, id);
   }
 }
