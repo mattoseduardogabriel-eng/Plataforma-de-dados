@@ -88,12 +88,14 @@ export class DataIntelligenceController {
     @Query('targetDocument') targetDocument?: string,
     @Query('dataInicio') dataInicio?: string,
     @Query('dataFim') dataFim?: string,
+    @Query('purpose') purpose?: string,
+    @Query('requestedById') requestedById?: string,
     @Query('skip') skip?: string,
     @Query('take') take?: string,
   ) {
     return this.dataIntelligenceService.history(
       user.organizationId,
-      { type, targetDocument, dataInicio, dataFim },
+      { type, targetDocument, dataInicio, dataFim, purpose, requestedById },
       { skip: skip ? Number(skip) : undefined, take: take ? Number(take) : undefined },
     );
   }

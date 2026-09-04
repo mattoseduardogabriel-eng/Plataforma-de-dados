@@ -117,7 +117,14 @@ export class DataIntelligenceService {
 
   async history(
     organizationId: string,
-    filters: { type?: DataQueryType; targetDocument?: string; dataInicio?: string; dataFim?: string },
+    filters: {
+      type?: DataQueryType;
+      targetDocument?: string;
+      dataInicio?: string;
+      dataFim?: string;
+      purpose?: string;
+      requestedById?: string;
+    },
     pagination: { skip?: number; take?: number },
   ) {
     const where: Prisma.DataQueryWhereInput = {
@@ -127,6 +134,8 @@ export class DataIntelligenceService {
       // antiga digitando só uma parte do CNPJ/CPF/telefone, sem precisar
       // lembrar o número inteiro certinho.
       targetDocument: filters.targetDocument ? { contains: filters.targetDocument.replace(/\D/g, '') } : undefined,
+      purpose: filters.purpose ? { contains: filters.purpose, mode: 'insensitive' } : undefined,
+      requestedById: filters.requestedById,
     };
     if (filters.dataInicio || filters.dataFim) {
       where.createdAt = {};

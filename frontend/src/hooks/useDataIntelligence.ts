@@ -25,6 +25,8 @@ export function useDataQueryHistory(
     targetDocument?: string;
     dataInicio?: string;
     dataFim?: string;
+    purpose?: string;
+    requestedById?: string;
     skip?: number;
     take?: number;
   } = {},

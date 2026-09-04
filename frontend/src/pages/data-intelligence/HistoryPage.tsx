@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, Select, Input, Spinner, Badge, EmptyState, Button } from '@/components/ui/primitives';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@/components/ui/table';
 import { useDataQueryHistory } from '@/hooks/useDataIntelligence';
+import { useOrgUsers } from '@/hooks/useUsers';
 import { formatDateTime, formatDocument } from '@/lib/utils';
 import type { DataQueryHistoryItem, DataQueryType } from '@/types';
 import { RegisterCustomerFromQueryDialog } from './RegisterCustomerFromQueryDialog';
@@ -15,12 +16,17 @@ export function HistoryPage() {
   const [targetDocument, setTargetDocument] = useState('');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [requestedById, setRequestedById] = useState('');
   const [page, setPage] = useState(0);
+  const { data: usuarios } = useOrgUsers();
   const { data, isLoading } = useDataQueryHistory({
     type: type || undefined,
     targetDocument: targetDocument || undefined,
     dataInicio: dataInicio || undefined,
     dataFim: dataFim || undefined,
+    purpose: purpose || undefined,
+    requestedById: requestedById || undefined,
     skip: page * PAGE_SIZE,
     take: PAGE_SIZE,
   });
@@ -65,7 +71,28 @@ export function HistoryPage() {
           <label className="mb-1 block text-xs text-neutral-500">Até</label>
           <Input type="date" value={dataFim} onChange={(e) => comFiltroNovo(setDataFim)(e.target.value)} />
         </div>
-        {(type || targetDocument || dataInicio || dataFim) && (
+        <div>
+          <label className="mb-1 block text-xs text-neutral-500">Finalidade</label>
+          <Input
+            className="w-48"
+            placeholder="Busca parcial"
+            value={purpose}
+            onChange={(e) => comFiltroNovo(setPurpose)(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-neutral-500">Solicitado por</label>
+          <Select className="w-48" value={requestedById} onChange={(e) => comFiltroNovo(setRequestedById)(e.target.value)}>
+            <option value="">Todos os usuários</option>
+            {usuarios?.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+                {u.active === false ? ' (inativo)' : ''}
+              </option>
+            ))}
+          </Select>
+        </div>
+        {(type || targetDocument || dataInicio || dataFim || purpose || requestedById) && (
           <Button
             variant="outline"
             size="sm"
@@ -74,6 +101,8 @@ export function HistoryPage() {
               setTargetDocument('');
               setDataInicio('');
               setDataFim('');
+              setPurpose('');
+              setRequestedById('');
               setPage(0);
             }}
           >
