@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Plus, Phone, Users2, Mail, FileText, ListChecks, StickyNote, Check } from 'lucide-react';
+import { Plus, Phone, Users2, Mail, FileText, ListChecks, StickyNote, Check, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, Card, Input, Label, Select, Textarea, Alert, Badge, Spinner, EmptyState } from '@/components/ui/primitives';
 import { Dialog } from '@/components/ui/dialog';
-import { useTasks, useCreateActivity, useMarkActivityDone } from '@/hooks/useCrm';
+import { useTasks, useCreateActivity, useMarkActivityDone, useDeleteActivity, useDeleteCompletedActivities } from '@/hooks/useCrm';
 import { useOrgUsers } from '@/hooks/useUsers';
 import { useAuth } from '@/lib/auth-context';
 import { extractErrorMessage } from '@/lib/api';
@@ -103,6 +103,7 @@ function NewTaskDialog({ open, onClose }: { open: boolean; onClose: () => void }
 
 function TaskRow({ task }: { task: Activity }) {
   const markDone = useMarkActivityDone();
+  const deleteActivity = useDeleteActivity();
   const Icon = TYPE_ICON[task.type];
   const isDone = !!task.doneAt;
   const isOverdue = !isDone && task.dueDate && new Date(task.dueDate) < new Date();
@@ -134,6 +135,17 @@ function TaskRow({ task }: { task: Activity }) {
       {task.dueDate && (
         <Badge tone={isOverdue ? 'danger' : 'neutral'}>{formatDate(task.dueDate)}</Badge>
       )}
+      {isDone && (
+        <button
+          type="button"
+          onClick={() => deleteActivity.mutate(task.id)}
+          disabled={deleteActivity.isPending}
+          className="mt-0.5 shrink-0 text-slate-300 hover:text-red-500"
+          title="Excluir tarefa"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }
@@ -144,6 +156,13 @@ export function TasksPage() {
   const [scope, setScope] = useState<'mine' | 'all'>('mine');
   const { data: tasks, isLoading } = useTasks(scope === 'mine' ? { assignedToId: currentUser?.id } : {});
   const [createOpen, setCreateOpen] = useState(false);
+  const deleteCompleted = useDeleteCompletedActivities();
+  const temConcluidas = tasks?.some((t) => !!t.doneAt) ?? false;
+
+  const handleClearCompleted = () => {
+    if (!window.confirm('Excluir todas as tarefas concluídas desta lista? Não dá pra desfazer.')) return;
+    deleteCompleted.mutate(scope === 'mine' ? currentUser?.id : undefined);
+  };
 
   return (
     <div>
@@ -166,9 +185,16 @@ export function TasksPage() {
             </button>
           </div>
         ) : <div />}
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4" /> Nova tarefa
-        </Button>
+        <div className="flex items-center gap-2">
+          {temConcluidas && (
+            <Button variant="outline" size="sm" onClick={handleClearCompleted} loading={deleteCompleted.isPending}>
+              <Trash2 className="h-3.5 w-3.5" /> Limpar concluídas
+            </Button>
+          )}
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" /> Nova tarefa
+          </Button>
+        </div>
       </div>
 
       <Card className="p-4">

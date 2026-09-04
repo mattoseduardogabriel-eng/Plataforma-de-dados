@@ -266,6 +266,23 @@ export function useMarkActivityDone() {
   });
 }
 
+export function useDeleteActivity() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/crm/activities/${id}`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm', 'activities'] }),
+  });
+}
+
+export function useDeleteCompletedActivities() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (assignedToId?: string) =>
+      (await api.delete<{ removed: number }>('/crm/activities/completed', { params: { assignedToId } })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm', 'activities'] }),
+  });
+}
+
 export function useCrmOverview() {
   return useQuery({
     queryKey: ['crm', 'dashboard', 'overview'],
