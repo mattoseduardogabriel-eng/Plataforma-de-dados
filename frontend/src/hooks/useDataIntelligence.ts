@@ -19,7 +19,16 @@ export function useDataQuery(kind: keyof typeof ENDPOINTS) {
   });
 }
 
-export function useDataQueryHistory(params: { type?: DataQueryType; targetDocument?: string } = {}) {
+export function useDataQueryHistory(
+  params: {
+    type?: DataQueryType;
+    targetDocument?: string;
+    dataInicio?: string;
+    dataFim?: string;
+    skip?: number;
+    take?: number;
+  } = {},
+) {
   return useQuery({
     queryKey: ['data-intelligence', 'history', params],
     queryFn: async () =>
