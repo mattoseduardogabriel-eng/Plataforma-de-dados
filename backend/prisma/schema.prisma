@@ -101,6 +101,12 @@ model Organization {
   // Mensagem da última falha do sync automático — só informativo, exibido
   // na tela de Integrações quando liroCrmSyncFailureCount cruza o limite.
   liroCrmLastSyncError    String?
+  // Mesma ideia acima, mas pra sincronização de TAREFAS (pushTaskCreate/
+  // Update/Delete) — evento a evento, não por rodada de cron (essa
+  // sincronização não é periódica). Zera a cada push com sucesso; conta
+  // falhas SEGUIDAS (ver LiroCrmService.registrarResultadoPushTarefa).
+  liroCrmTaskSyncFailureCount Int    @default(0)
+  liroCrmTaskSyncLastError    String?
 
   personalDataProviderConfig PersonalDataProviderConfig?
 
@@ -448,6 +454,20 @@ model Activity {
   assignedToId   String?
   assignedTo     User?    @relation("ActivityAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
   createdAt      DateTime @default(now())
+  // Sincronização de tarefas com o Liro CRM (baseada no e-mail do usuário,
+  // dos dois lados) — ver LiroCrmService (push*/handleInboundWebhook) e
+  // docs/INTEGRACAO-LIRO-CRM.md. origin "local" = nasceu aqui, dispara
+  // push pro Liro quando muda; "liro" = veio de lá via webhook, NUNCA
+  // dispara push de volta (evita ping-pong infinito entre os dois
+  // sistemas).
+  origin         String    @default("local")
+  // Id da Task correspondente no Liro. Preenchido nos dois casos: quando
+  // origin = "liro" (é o id que veio no evento, usado pra casar
+  // update/delete futuros vindos de lá) e quando origin = "local" (assim
+  // que o push de criação confirma, guarda o id devolvido pelo Liro —
+  // dali em diante toda edição/exclusão usa esse id direto, ver
+  // LiroCrmService.pushTaskCreate).
+  externalId     String?   @unique
 
   @@index([organizationId])
   @@index([dealId])

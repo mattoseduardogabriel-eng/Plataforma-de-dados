@@ -5,7 +5,7 @@ import { DocumentType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { SecretCipher } from '../../../common/crypto/secret-cipher';
 import { AuditService } from '../../audit/audit.service';
-import { LiroCrmConnector, LiroCredentials } from './liro-crm.connector';
+import { LiroCrmConnector, LiroCredentials, LiroTask, UpsertLiroTaskInput } from './liro-crm.connector';
 import { SaveLiroCrmCredentialsDto } from './dto/save-credentials.dto';
 import { SetStageMappingDto } from './dto/set-stage-mapping.dto';
 import { LiroContact } from './liro-crm.connector';
@@ -80,6 +80,14 @@ function jaProcessouEssaEntrega(hash: string): boolean {
   return false;
 }
 
+// Quantos PUSHES de tarefa SEGUIDOS (não rodadas de cron — a
+// sincronização de tarefas é orientada a evento, ver
+// registrarResultadoPushTarefa) precisam falhar antes de soar alerta.
+// Mesmo raciocínio do sync de contatos (LiroCrmSyncScheduler): descarta
+// uma instabilidade passageira isolada sem demorar pra avisar de um
+// problema persistente.
+const ALERTA_FALHAS_TAREFA_SEGUIDAS = 5;
+
 @Injectable()
 export class LiroCrmService {
   private readonly logger = new Logger(LiroCrmService.name);
@@ -114,6 +122,12 @@ export class LiroCrmService {
       syncFailing: org.liroCrmSyncFailureCount >= 5,
       syncFailureCount: org.liroCrmSyncFailureCount,
       lastSyncError: org.liroCrmLastSyncError,
+      // Mesma ideia, só que pra sincronização de TAREFAS — orientada a
+      // evento (cada push conta), não por rodada de cron, ver
+      // registrarResultadoPushTarefa.
+      taskSyncFailing: org.liroCrmTaskSyncFailureCount >= ALERTA_FALHAS_TAREFA_SEGUIDAS,
+      taskSyncFailureCount: org.liroCrmTaskSyncFailureCount,
+      lastTaskSyncError: org.liroCrmTaskSyncLastError,
     };
   }
 
@@ -526,6 +540,300 @@ export class LiroCrmService {
     }
   }
 
+  // --- Sincronização de tarefas (bidirecional) ---
+  // Aster → Liro: pushTaskCreate/pushTaskUpdate/pushTaskDelete, chamados
+  // por ActivitiesService depois de criar/concluir/excluir uma tarefa
+  // (Activity) por aqui. Liro → Aster: handleInboundWebhook() (mesmo
+  // endpoint das outras notificações), tratando os eventos
+  // task_created/task_updated/task_completed/task_deleted. Casa o
+  // responsável/criador pelo E-MAIL do usuário (mesmo e-mail nos dois
+  // sistemas) — não existe usuário compartilhado entre Liro e Aster.
+
+  /**
+   * Zera (sucesso) ou incrementa (falha) o contador de falhas SEGUIDAS de
+   * push de tarefa da organização — mesma ideia do
+   * liroCrmSyncFailureCount pro sync de contatos, só que por PUSH
+   * individual em vez de por rodada de cron (essa sincronização é
+   * orientada a evento, não roda periodicamente). Cruzar o limite grava
+   * um AuditLog, uma vez só (não em toda falha seguinte, senão vira spam
+   * de auditoria pra uma integração quebrada há dias) — volta a poder
+   * alertar só depois do próximo sucesso.
+   */
+  private async registrarResultadoPushTarefa(organizationId: string, erro: string | null): Promise<void> {
+    if (erro === null) {
+      // Sucesso: só grava se o contador não já estava zerado — evita um
+      // UPDATE a cada push pra sempre (a maioria dá certo).
+      await this.prisma.organization
+        .updateMany({
+          where: { id: organizationId, liroCrmTaskSyncFailureCount: { not: 0 } },
+          data: { liroCrmTaskSyncFailureCount: 0, liroCrmTaskSyncLastError: null },
+        })
+        .catch(() => {});
+      return;
+    }
+
+    const atualizada = await this.prisma.organization
+      .update({
+        where: { id: organizationId },
+        data: { liroCrmTaskSyncFailureCount: { increment: 1 }, liroCrmTaskSyncLastError: erro.slice(0, 500) },
+      })
+      .catch(() => null);
+    if (!atualizada) return;
+
+    if (atualizada.liroCrmTaskSyncFailureCount === ALERTA_FALHAS_TAREFA_SEGUIDAS) {
+      await this.auditService
+        .log({
+          organizationId,
+          action: 'LIRO_CRM_TASK_SYNC_REPEATED_FAILURE',
+          entityType: 'Organization',
+          entityId: organizationId,
+          metadata: { consecutiveFailures: atualizada.liroCrmTaskSyncFailureCount, lastError: erro.slice(0, 500) },
+        })
+        .catch(() => {});
+    }
+  }
+
+  /**
+   * Melhor esforço, nunca lança: chamado depois de criar uma tarefa aqui.
+   * Só cria do lado do Liro se a integração estiver configurada. Guarda o
+   * `id` devolvido pelo Liro em Activity.externalId — toda edição/exclusão
+   * futura dessa tarefa usa esse id (ver pushTaskUpdate/pushTaskDelete),
+   * nunca cria de novo.
+   */
+  async pushTaskCreate(organizationId: string, activityId: string): Promise<void> {
+    try {
+      const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+      if (!org?.liroCrmApiKeyEncrypted || !org.liroCrmBaseUrl) return;
+
+      const activity = await this.prisma.activity.findFirst({
+        where: { id: activityId, organizationId },
+        include: { assignedTo: { select: { email: true } }, createdBy: { select: { email: true } }, lead: { select: { phone: true } } },
+      });
+      // Sem atividade (já excluída de novo rapidinho?) ou já tem
+      // externalId (já foi sincronizada antes — não chama de novo, ver
+      // pushTaskUpdate) — nada a fazer.
+      if (!activity || activity.externalId) return;
+
+      const creds: LiroCredentials = { apiKey: this.cipher.decrypt(org.liroCrmApiKeyEncrypted), baseUrl: org.liroCrmBaseUrl };
+      const input: UpsertLiroTaskInput = {
+        externalId: activity.id,
+        title: activity.title,
+        dueDate: activity.dueDate?.toISOString() ?? null,
+        done: Boolean(activity.doneAt),
+        assignedUserEmail: activity.assignedTo?.email ?? null,
+        createdByEmail: activity.createdBy?.email ?? null,
+        contactPhoneNumber: activity.lead?.phone ?? null,
+      };
+      const resultado = await this.connector.upsertTask(creds, input);
+      await this.prisma.activity.update({ where: { id: activity.id }, data: { externalId: resultado.id } });
+      await this.registrarResultadoPushTarefa(organizationId, null);
+    } catch (error) {
+      const mensagem = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Não foi possível criar a tarefa ${activityId} no Liro CRM: ${mensagem}`);
+      await this.registrarResultadoPushTarefa(organizationId, mensagem);
+    }
+  }
+
+  /**
+   * Melhor esforço, nunca lança: chamado depois de editar/concluir uma
+   * tarefa aqui. Sem externalId ainda (a criação original nunca chegou a
+   * sincronizar — integração conectada depois, ou falha na hora) tenta
+   * criar agora em vez de desistir pra sempre.
+   */
+  async pushTaskUpdate(organizationId: string, activityId: string): Promise<void> {
+    try {
+      const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+      if (!org?.liroCrmApiKeyEncrypted || !org.liroCrmBaseUrl) return;
+
+      const activity = await this.prisma.activity.findFirst({
+        where: { id: activityId, organizationId },
+        include: { assignedTo: { select: { email: true } }, lead: { select: { phone: true } } },
+      });
+      if (!activity) return;
+
+      if (!activity.externalId) {
+        await this.pushTaskCreate(organizationId, activityId);
+        return;
+      }
+
+      const creds: LiroCredentials = { apiKey: this.cipher.decrypt(org.liroCrmApiKeyEncrypted), baseUrl: org.liroCrmBaseUrl };
+      await this.connector.patchTask(creds, activity.externalId, {
+        title: activity.title,
+        dueDate: activity.dueDate?.toISOString() ?? null,
+        done: Boolean(activity.doneAt),
+        assignedUserEmail: activity.assignedTo?.email ?? null,
+        contactPhoneNumber: activity.lead?.phone ?? null,
+      });
+      await this.registrarResultadoPushTarefa(organizationId, null);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        // Não achou mais lá — não é uma falha de comunicação (o Liro
+        // respondeu certinho, só que "não existe"), não conta pro alerta.
+        this.logger.debug(`Tarefa ${activityId}: não encontrada mais no Liro CRM, nada a atualizar.`);
+        return;
+      }
+      const mensagem = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Não foi possível atualizar a tarefa ${activityId} no Liro CRM: ${mensagem}`);
+      await this.registrarResultadoPushTarefa(organizationId, mensagem);
+    }
+  }
+
+  /**
+   * Melhor esforço, nunca lança: chamado depois de excluir uma tarefa
+   * aqui (ou em massa, "Limpar concluídas"). `externalId` nulo (nunca
+   * chegou a sincronizar) já é tratado antes de chamar — nada a fazer.
+   */
+  async pushTaskDelete(organizationId: string, externalId: string | null): Promise<void> {
+    if (!externalId) return;
+    try {
+      const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+      if (!org?.liroCrmApiKeyEncrypted || !org.liroCrmBaseUrl) return;
+
+      const creds: LiroCredentials = { apiKey: this.cipher.decrypt(org.liroCrmApiKeyEncrypted), baseUrl: org.liroCrmBaseUrl };
+      await this.connector.deleteTask(creds, externalId);
+      await this.registrarResultadoPushTarefa(organizationId, null);
+    } catch (error) {
+      if (error instanceof NotFoundException) return; // já não existia lá — nada a fazer, não conta pro alerta
+      const mensagem = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Não foi possível excluir a tarefa (id ${externalId}) no Liro CRM: ${mensagem}`);
+      await this.registrarResultadoPushTarefa(organizationId, mensagem);
+    }
+  }
+
+  /**
+   * Sincronização retroativa/manual de tarefas — chamada sob demanda
+   * (botão "Sincronizar tarefas agora", não automática) porque só o
+   * push/webhook em tempo real não cobre dois casos: tarefa que já
+   * existia ANTES da integração conectar, e uma sincronização
+   * individual que falhou e nunca foi reprocessada (ex: integração
+   * caiu bem na hora de criar, e a tarefa nunca mais foi editada pra
+   * disparar um novo push). Faz os dois sentidos:
+   *
+   * - Aster → Liro: toda Activity local (origin implícito "local", sem
+   *   externalId ainda) chama pushTaskCreate — o mesmo método que roda
+   *   normalmente ao criar uma tarefa, só que em lote aqui.
+   * - Liro → Aster: puxa TODAS as tarefas de lá (GET /tasks, sem
+   *   `since` — silencioso e idempotente reprocessar uma que já
+   *   sincronizou, upsert por externalId) e aplica cada uma com o
+   *   mesmo processTaskEvent do webhook, direto no banco.
+   *
+   * Nunca lança — cada lado roda o próprio try/catch, uma falha não
+   * derruba a outra metade nem o restante do lote.
+   */
+  async backfillTasks(organizationId: string): Promise<{ enviadasParaLiro: number; recebidasDoLiro: number }> {
+    const creds = await this.getCredentials(organizationId);
+
+    const pendentes = await this.prisma.activity.findMany({
+      where: { organizationId, externalId: null },
+      select: { id: true },
+    });
+    for (const atividade of pendentes) {
+      await this.pushTaskCreate(organizationId, atividade.id);
+    }
+
+    let recebidasDoLiro = 0;
+    try {
+      const tarefasDoLiro: LiroTask[] = await this.connector.listTasks(creds);
+      for (const task of tarefasDoLiro) {
+        await this.processTaskEvent(organizationId, 'task_created', { task });
+        recebidasDoLiro += 1;
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Sincronização retroativa de tarefas (org ${organizationId}): falha ao puxar tarefas do Liro CRM: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+
+    return { enviadasParaLiro: pendentes.length, recebidasDoLiro };
+  }
+
+  /**
+   * Recebe (via handleInboundWebhook) os 4 eventos de tarefa vindos do
+   * Liro. Escreve direto via Prisma, NUNCA por ActivitiesService — do
+   * contrário disparia de volta um push pro Liro (pushTaskCreate/Update)
+   * e viraria ping-pong infinito, mesmo motivo documentado no bloco de
+   * funil acima. Upsert por externalId = id da Task no Liro (idempotente
+   * — reentrega do Liro atualiza em vez de duplicar).
+   */
+  private async processTaskEvent(
+    organizationId: string,
+    event: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const task = payload.task as
+      | {
+          id?: string;
+          title?: string;
+          dueDate?: string | null;
+          done?: boolean;
+          contact?: { phoneNumber?: string; name?: string } | null;
+          assignedUserEmail?: string | null;
+          createdByEmail?: string | null;
+        }
+      | undefined;
+    if (!task?.id) {
+      this.logger.warn(`Webhook do Liro CRM (org ${organizationId}, evento ${event}): sem "task.id" no payload — ignorado.`);
+      return;
+    }
+
+    const existente = await this.prisma.activity.findFirst({ where: { organizationId, externalId: task.id } });
+
+    if (event === 'task_deleted') {
+      if (!existente) return; // nunca chegou a existir aqui (ou já foi excluída) — nada a fazer
+      await this.prisma.activity.delete({ where: { id: existente.id } });
+      return;
+    }
+
+    let assignedToId: string | undefined;
+    if (task.assignedUserEmail) {
+      const user = await this.prisma.user.findFirst({ where: { organizationId, email: task.assignedUserEmail } });
+      assignedToId = user?.id;
+    }
+    // Activity.createdById não é opcional (toda atividade sempre tem
+    // alguém que criou) — sem o e-mail de quem criou batendo com ninguém
+    // aqui, cai pro responsável; sem nenhum dos dois, recusa em vez de
+    // inventar um "criador" ou quebrar o insert.
+    let createdById: string | undefined;
+    if (task.createdByEmail) {
+      const user = await this.prisma.user.findFirst({ where: { organizationId, email: task.createdByEmail } });
+      createdById = user?.id;
+    }
+    createdById = createdById ?? assignedToId;
+    if (!createdById) {
+      this.logger.warn(
+        `Webhook do Liro CRM (org ${organizationId}, evento ${event}, tarefa ${task.id}): nenhum usuário aqui com o e-mail de quem criou ou de quem é responsável — ignorado. Cadastre um usuário com esse e-mail na Aster.`,
+      );
+      return;
+    }
+
+    const phoneNormalizado = task.contact?.phoneNumber ? normalizePhone(task.contact.phoneNumber) : null;
+    let leadId: string | undefined;
+    if (phoneNormalizado) {
+      const lead = await this.prisma.lead.findFirst({ where: { organizationId, OR: buildPhoneMatchConditions(undefined, phoneNormalizado) } });
+      leadId = lead?.id;
+    }
+
+    // Preserva o doneAt original se a tarefa já estava concluída aqui e
+    // continua concluída (senão toda edição não relacionada — ex: só
+    // mudou o título — reataria a data de conclusão pra "agora").  Só
+    // carimba data nova na transição de pendente -> concluída.
+    const doneAt = !task.done ? null : (existente?.doneAt ?? new Date());
+
+    const dados = {
+      title: task.title ?? 'Tarefa sincronizada do Liro',
+      dueDate: task.dueDate ? new Date(task.dueDate) : null,
+      doneAt,
+      assignedToId: assignedToId ?? null,
+      leadId: leadId ?? null,
+    };
+
+    await this.prisma.activity.upsert({
+      where: { externalId: task.id },
+      create: { ...dados, organizationId, createdById, type: 'TAREFA', origin: 'liro', externalId: task.id },
+      update: dados,
+    });
+  }
+
   /**
    * Confere o header X-Liro-Signature (sha256=<hmac hex>) contra o corpo
    * bruto recebido. Tolerante de propósito — não derruba a integração de
@@ -594,6 +902,13 @@ export class LiroCrmService {
     const hashEntrega = createHash('sha256').update(`${token}:${rawBody ?? JSON.stringify(payload)}`).digest('hex');
     if (jaProcessouEssaEntrega(hashEntrega)) {
       this.logger.warn(`Webhook do Liro CRM (org ${org.id}, evento ${payload.event}): entrega repetida (reentrega do Liro) — já processada, ignorando.`);
+      return;
+    }
+
+    // Eventos de tarefa têm formato próprio (payload.task, não
+    // payload.contact) — tratados à parte, ver processTaskEvent.
+    if (typeof payload.event === 'string' && payload.event.startsWith('task_')) {
+      await this.processTaskEvent(org.id, payload.event, payload);
       return;
     }
 

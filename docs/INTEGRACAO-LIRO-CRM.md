@@ -17,6 +17,10 @@ Liro CRM** (server-to-server, sem login de usuário) para:
 4. **Abrir a conversa do cliente no Liro direto daqui** — clicar no
    telefone de um lead ou cliente abre o painel do Liro já na conversa
    certa.
+5. **Sincronizar tarefas nos dois sentidos, em tempo real** — uma tarefa
+   (Activity) criada, editada, concluída ou excluída aqui reflete no Liro,
+   e vice-versa, casando o usuário responsável/criador pelo **e-mail**
+   (mesmo e-mail nos dois sistemas).
 
 ## Como conectar
 
@@ -33,8 +37,10 @@ A chave é cifrada (AES-256-GCM) antes de ir para o banco — ver
 frontend; a UI mostra só os últimos 4 caracteres.
 
 Ao conectar, a Plataforma também **se auto-registra como webhook** no
-Liro (`POST /webhooks`, eventos `conversation_moved` e
-`conversation_deleted`) — não precisa cadastrar nada manualmente na tela
+Liro (`POST /webhooks`, eventos `conversation_moved`,
+`conversation_deleted` e os 4 de tarefa — `task_created`/`task_updated`/
+`task_completed`/`task_deleted`) — não precisa cadastrar nada manualmente
+na tela
 de Webhooks do Liro, só requer que a variável de ambiente
 `PUBLIC_API_URL` (backend desta plataforma) esteja configurada com o
 domínio público onde ela está hospedada; sem isso, o registro é pulado
@@ -137,6 +143,81 @@ recarregam a tela na hora, sem esperar o próximo ciclo automático —
 útil quando você quer conferir na hora se um movimento já refletiu do
 outro lado.
 
+## Sincronização de tarefas (bidirecional, tempo real)
+
+Toda tarefa (`Activity`) sincroniza com o Liro — **sempre**, mesmo sem
+lead/negócio vinculado (uma tarefa avulsa também sincroniza). Casa o
+responsável/criador pelo **e-mail** do usuário (mesmo e-mail cadastrado
+nos dois sistemas) — sem usuário nenhum encontrado por e-mail (nem
+responsável, nem criador), a tarefa não sincroniza (fica só de um lado,
+logado como aviso; não quebra a operação de quem criou).
+
+- **Aster → Liro**: `ActivitiesService.create`/`markDone`/`remove`/
+  `removeCompleted` chamam `LiroCrmService.pushTaskCreate`/`pushTaskUpdate`/
+  `pushTaskDelete` (melhor esforço, nunca bloqueia a resposta). A
+  primeira criação usa `POST /tasks` (upsert por `externalId` = id da
+  Activity aqui, protege contra retry de rede duplicando); a resposta
+  traz o `id` de verdade do lado do Liro, guardado em
+  `Activity.externalId` — toda edição/exclusão depois usa `PATCH`/`DELETE
+  /tasks/:id` com esse id, não o `externalId` original.
+- **Liro → Aster**: os 4 eventos de tarefa chegam no mesmo webhook de
+  funil (`POST /api/integrations/liro-crm/webhook/:token`),
+  tratados por `LiroCrmService.processTaskEvent` — upsert por
+  `externalId` = id da tarefa no Liro, **direto no banco** (nunca por
+  `ActivitiesService`, mesmo motivo do funil: evita ping-pong). Tarefa
+  sincronizada assim nasce com `origin: "liro"`.
+- **Espelha as duas direções mesmo numa tarefa que nasceu do outro
+  lado**: uma tarefa recebida do Liro (`origin: "liro"`) que alguém
+  conclui/edita/exclui aqui dispara push de volta pro Liro normalmente
+  (`markDone`/`remove` não checam `origin`) — o Liro também vê a
+  atualização.
+- **"Limpar concluídas"** (`DELETE /crm/activities/completed`) dispara um
+  `pushTaskDelete` por atividade removida, individualmente, sem travar a
+  resposta do "limpar tudo".
+
+**Retry com backoff.** Toda chamada HTTP do `LiroCrmConnector` (não só as
+de tarefa — contatos, tags, funil, tudo) tenta até 3 vezes (2s, depois 6s
+de espera) antes de desistir, mas **só** pra falha genuinamente transitória
+— sem resposta nenhuma (rede caiu, timeout) ou erro do **servidor** do
+Liro (5xx). `400`/`401`/`404` (nosso pedido errado, chave inválida,
+recurso que não existe) falham na hora, sem esperar — tentar de novo não
+resolve. Mesmo padrão (3 tentativas, 2s/6s) do envio de webhook Liro →
+Aster (`dispatch.js`/`enviarUm` do lado do Liro).
+
+**Alerta de falha persistente (tarefas).** Diferente do sync de contatos
+(que conta rodadas de cron), a sincronização de tarefas é orientada a
+evento — `LiroCrmService.registrarResultadoPushTarefa` conta quantos
+**pushes seguidos** (`pushTaskCreate`/`Update`/`Delete`) falharam pra cada
+organização, zerando a cada sucesso. Ao cruzar 5 falhas seguidas, grava um
+`AuditLog` (`LIRO_CRM_TASK_SYNC_REPEATED_FAILURE`) e a tela de Integrações
+mostra um aviso vermelho com a última mensagem de erro
+(`liroCrmTaskSyncLastError`) — mesmo tratamento visual do alerta de sync
+de contatos, só que campo/contador próprios (`taskSyncFailing` no
+`GET /integrations/liro-crm`).
+
+**Sincronização retroativa/manual ("Sincronizar tarefas agora").** O
+push/webhook em tempo real só cobre tarefa criada/editada **depois** da
+integração conectar — uma tarefa de antes, ou uma sincronização
+individual que falhou e nunca foi reprocessada (a integração caiu bem na
+hora, e ninguém tocou mais naquela tarefa), fica pra trás pra sempre.
+`POST /integrations/liro-crm/tasks/backfill` (botão na tela de
+Integrações) roda `LiroCrmService.backfillTasks`, nos dois sentidos:
+- Aster → Liro: toda `Activity` local sem `externalId` ainda chama
+  `pushTaskCreate` (o mesmo método do fluxo normal, em lote).
+- Liro → Aster: `GET /tasks` (sem `since` — puxa tudo) e aplica cada
+  tarefa via `processTaskEvent`, igual a receber o evento `task_created`
+  por webhook — idempotente, reprocessar uma tarefa já sincronizada não
+  duplica nada (upsert por `externalId`).
+
+Melhor esforço nos dois sentidos — uma falha só ao puxar do Liro (ex:
+integração fora do ar bem nessa hora) não desfaz o que já foi enviado
+pra lá, e vice-versa.
+
+**Indicação visual de origem.** `Activity.origin` (`'local'` ou `'liro'`)
+e `Task.origin` (`'local'` ou `'aster'`) aparecem como um ícone de link
+ao lado do título da tarefa, nas telas de Tarefas dos dois sistemas — só
+informativo, não muda nenhum comportamento.
+
 ## Como o telefone é casado entre os dois sistemas
 
 A mesma pessoa salva de formas diferentes (com/sem `+55`, com/sem o 9º
@@ -191,7 +272,11 @@ openLiroCrmConversation` no lado daqui e o tratamento de `?phone=` em
 | `POST /contacts/:id/tags` | Espelhar decisão do Crivo / tag manual |
 | `GET /kanban-stages` | Montar a tela de mapeamento de funil |
 | `PATCH /contacts/:id/kanban-stage` | Refletir negócio movido (Aster → Liro) |
-| `POST /webhooks` | Auto-registro pra receber `conversation_moved`/`conversation_deleted` |
+| `POST /webhooks` | Auto-registro pra receber `conversation_moved`/`conversation_deleted`/os 4 eventos de tarefa |
+| `GET /tasks` | Sincronização retroativa/manual (backfill) — puxar tudo |
+| `POST /tasks` | Criar uma tarefa no Liro (upsert por `externalId`, só na criação) |
+| `PATCH /tasks/:id` | Editar/concluir uma tarefa no Liro, pelo id de lá |
+| `DELETE /tasks/:id` | Excluir uma tarefa no Liro, pelo id de lá |
 
 ## Auditoria
 
@@ -206,8 +291,9 @@ gera um `AuditLog` (`LIRO_CRM_CREDENTIALS_SAVED`,
 
 O contrato da API é simples o bastante para simular com um mock HTTP local
 implementando `GET /tags`, `GET/POST /contacts`, `POST /contacts/:id/tags`,
-`GET /kanban-stages`, `PATCH /contacts/:id/kanban-stage` e `POST /webhooks`
-com o mesmo formato de autenticação e erros — é assim que esta integração
-foi validada ponta a ponta durante o desenvolvimento (conectar,
-sincronizar, mapear funil, mover negócio nos dois sentidos, avaliar no
-Crivo e ver a tag aparecer no contato).
+`GET /kanban-stages`, `PATCH /contacts/:id/kanban-stage`, `POST /webhooks`
+e `POST/PATCH/DELETE /tasks` com o mesmo formato de autenticação e erros —
+é assim que esta integração foi validada ponta a ponta durante o
+desenvolvimento (conectar, sincronizar, mapear funil, mover negócio nos
+dois sentidos, avaliar no Crivo e ver a tag aparecer no contato, criar e
+concluir tarefa nos dois sentidos).

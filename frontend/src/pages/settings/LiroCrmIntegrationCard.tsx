@@ -7,6 +7,7 @@ import {
   useRemoveLiroCrmCredentials,
   useTestLiroCrmConnection,
   useSyncLiroCrmContacts,
+  useBackfillLiroCrmTasks,
   useLiroCrmKanbanStages,
   useSetLiroCrmStageMapping,
 } from '@/hooks/useIntegrations';
@@ -21,6 +22,7 @@ export function LiroCrmIntegrationCard({ isAdmin }: { isAdmin: boolean }) {
   const remove = useRemoveLiroCrmCredentials();
   const test = useTestLiroCrmConnection();
   const sync = useSyncLiroCrmContacts();
+  const backfillTasks = useBackfillLiroCrmTasks();
   const { data: pipelines } = usePipelines();
   const { data: liroStages } = useLiroCrmKanbanStages(!!status?.configured);
   const setMapping = useSetLiroCrmStageMapping();
@@ -74,6 +76,19 @@ export function LiroCrmIntegrationCard({ isAdmin }: { isAdmin: boolean }) {
     }
   };
 
+  const onBackfillTasks = async () => {
+    try {
+      const result = await backfillTasks.mutateAsync();
+      toast({
+        tone: 'success',
+        title: 'Sincronização de tarefas concluída',
+        description: `${result.enviadasParaLiro} enviada(s) pra lá, ${result.recebidasDoLiro} recebida(s) de lá.`,
+      });
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao sincronizar tarefas', description: extractErrorMessage(err) });
+    }
+  };
+
   const onRemove = async () => {
     try {
       await remove.mutateAsync();
@@ -122,6 +137,12 @@ export function LiroCrmIntegrationCard({ isAdmin }: { isAdmin: boolean }) {
                 {status.lastSyncError ? ` — ${status.lastSyncError}` : ''}. Confira a chave de API e a Base URL.
               </p>
             )}
+            {status.taskSyncFailing && (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                ⚠ A sincronização de tarefas está falhando há {status.taskSyncFailureCount} tentativa(s) seguida(s)
+                {status.lastTaskSyncError ? ` — ${status.lastTaskSyncError}` : ''}. Confira a chave de API e a Base URL.
+              </p>
+            )}
             {isAdmin && (
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={onTest} loading={test.isPending}>
@@ -129,6 +150,9 @@ export function LiroCrmIntegrationCard({ isAdmin }: { isAdmin: boolean }) {
                 </Button>
                 <Button size="sm" onClick={onSync} loading={sync.isPending}>
                   <RefreshCw className="h-4 w-4" /> Sincronizar contatos agora
+                </Button>
+                <Button size="sm" variant="outline" onClick={onBackfillTasks} loading={backfillTasks.isPending}>
+                  <RefreshCw className="h-4 w-4" /> Sincronizar tarefas agora
                 </Button>
                 <Button size="sm" variant="destructive" onClick={onRemove} loading={remove.isPending}>
                   <Unlink className="h-4 w-4" /> Desconectar

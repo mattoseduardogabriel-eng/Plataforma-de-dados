@@ -47,6 +47,29 @@ export interface LiroKanbanStage {
   order: number;
 }
 
+export interface UpsertLiroTaskInput {
+  externalId: string;
+  title: string;
+  dueDate?: string | null;
+  done?: boolean;
+  assignedUserEmail?: string | null;
+  createdByEmail?: string | null;
+  contactPhoneNumber?: string | null;
+}
+
+// Formato de item devolvido por GET /tasks — mesmo `task` dos 4 eventos
+// de webhook, ver seção "Tarefas" em API_EXTERNA.md do Liro.
+export interface LiroTask {
+  id: string;
+  externalId: string | null;
+  title: string;
+  dueDate?: string | null;
+  done: boolean;
+  contact?: { phoneNumber?: string; name?: string } | null;
+  assignedUserEmail?: string | null;
+  createdByEmail?: string | null;
+}
+
 /**
  * Cliente HTTP fiel à "API externa do Liro CRM" (server-to-server, chave
  * `liro_<id>_<segredo>` no header Authorization). Ver
@@ -58,44 +81,81 @@ export class LiroCrmConnector {
 
   constructor(private readonly httpService: HttpService) {}
 
+  // Retry com espera crescente — só pra falha GENUINAMENTE transitória:
+  // sem resposta nenhuma (rede caiu, timeout) ou erro do SERVIDOR do Liro
+  // (5xx, quebrou do lado de lá). 4xx (400/401/404 — nosso pedido errado,
+  // chave inválida, recurso que não existe) nunca se resolve tentando de
+  // novo, falha na hora, sem esperar. Mesmo padrão (3 tentativas, 2s/6s)
+  // do envio de webhook Liro -> Aster, ver dispatch.js/enviarUm do lado
+  // do Liro — antes dessa mudança, uma instabilidade de alguns segundos
+  // bem na hora de empurrar uma tarefa/tag/etapa perdia a sincronização
+  // pra sempre (só reprocessava numa PRÓXIMA edição, se houvesse).
+  private static readonly MAX_TENTATIVAS = 3;
+  private static readonly ESPERA_ENTRE_TENTATIVAS_MS = [2000, 6000];
+
+  // Isolado num método próprio (em vez de setTimeout direto ali embaixo)
+  // só pra dar pra sobrescrever/espiar em teste sem esperar de verdade —
+  // mesma razão do enviarUm/esperar no dispatch.js do Liro.
+  protected esperar(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   private async request<T>(
     creds: LiroCredentials,
-    method: 'get' | 'post' | 'patch',
+    method: 'get' | 'post' | 'patch' | 'delete',
     path: string,
     options: { params?: Record<string, unknown>; data?: unknown } = {},
   ): Promise<T> {
     const baseUrl = creds.baseUrl.replace(/\/+$/, '');
-    try {
-      const { data } = await firstValueFrom(
-        this.httpService.request<T>({
-          method,
-          url: `${baseUrl}${path}`,
-          params: options.params,
-          data: options.data,
-          timeout: 10000,
-          headers: { Authorization: `Bearer ${creds.apiKey}` },
-        }),
-      );
-      return data;
-    } catch (error) {
-      const axiosError = error as AxiosError<{ error?: string }>;
-      const status = axiosError.response?.status;
-      const message = axiosError.response?.data?.error;
+    const url = `${baseUrl}${path}`;
 
-      if (status === 401) {
-        throw new UnauthorizedException(
-          message ?? 'Chave de API do Liro CRM ausente, inválida ou revogada.',
+    for (let tentativa = 1; tentativa <= LiroCrmConnector.MAX_TENTATIVAS; tentativa++) {
+      try {
+        const { data } = await firstValueFrom(
+          this.httpService.request<T>({
+            method,
+            url,
+            params: options.params,
+            data: options.data,
+            timeout: 10000,
+            headers: { Authorization: `Bearer ${creds.apiKey}` },
+          }),
         );
+        return data;
+      } catch (error) {
+        const axiosError = error as AxiosError<{ error?: string }>;
+        const status = axiosError.response?.status;
+        const message = axiosError.response?.data?.error;
+
+        if (status === 401) {
+          throw new UnauthorizedException(
+            message ?? 'Chave de API do Liro CRM ausente, inválida ou revogada.',
+          );
+        }
+        if (status === 404) {
+          throw new NotFoundException(message ?? 'Recurso não encontrado no Liro CRM.');
+        }
+        if (status === 400) {
+          throw new BadGatewayException(message ?? 'Requisição rejeitada pelo Liro CRM.');
+        }
+
+        // Sem status (rede/timeout) ou 5xx — vale tentar de novo, se
+        // ainda sobrar tentativa.
+        if (tentativa < LiroCrmConnector.MAX_TENTATIVAS) {
+          this.logger.warn(
+            `Falha ao chamar Liro CRM (${method.toUpperCase()} ${path}), tentativa ${tentativa}/${LiroCrmConnector.MAX_TENTATIVAS}: ${axiosError.message} — tentando de novo.`,
+          );
+          await this.esperar(LiroCrmConnector.ESPERA_ENTRE_TENTATIVAS_MS[tentativa - 1]);
+          continue;
+        }
+
+        this.logger.error(`Falha ao chamar Liro CRM (${method.toUpperCase()} ${path}) após ${LiroCrmConnector.MAX_TENTATIVAS} tentativas: ${axiosError.message}`);
+        throw new BadGatewayException('Não foi possível falar com o Liro CRM no momento.');
       }
-      if (status === 404) {
-        throw new NotFoundException(message ?? 'Recurso não encontrado no Liro CRM.');
-      }
-      if (status === 400) {
-        throw new BadGatewayException(message ?? 'Requisição rejeitada pelo Liro CRM.');
-      }
-      this.logger.error(`Falha ao chamar Liro CRM (${method.toUpperCase()} ${path}): ${axiosError.message}`);
-      throw new BadGatewayException('Não foi possível falar com o Liro CRM no momento.');
     }
+    // Inalcançável (o loop sempre retorna ou lança) — só pra o TypeScript
+    // não reclamar de "not all code paths return a value".
+    throw new BadGatewayException('Não foi possível falar com o Liro CRM no momento.');
   }
 
   async listContacts(
@@ -203,5 +263,50 @@ export class LiroCrmConnector {
       '/webhooks',
       { data: { url } },
     );
+  }
+
+  /**
+   * Lista tarefas do lado do Liro (`?since=` opcional) — usado só pra
+   * sincronização retroativa/manual (ver LiroCrmService.backfillTasks):
+   * tarefa criada lá ANTES da integração conectar (ou que nunca chegou
+   * via webhook) nunca sincroniza sozinha, então isso puxa sob demanda.
+   */
+  async listTasks(creds: LiroCredentials, params: { since?: string } = {}): Promise<LiroTask[]> {
+    const raw = await this.request<unknown>(creds, 'get', '/tasks', { params });
+    return this.unwrapList<LiroTask>(raw);
+  }
+
+  /**
+   * Cria ou atualiza (upsert por `externalId` = id da Activity aqui na
+   * Aster) uma tarefa do lado do Liro — ver seção "Tarefas" em
+   * API_EXTERNA.md do Liro CRM. Idempotente: chamar de novo com o mesmo
+   * `externalId` atualiza em vez de duplicar, então serve tanto pra
+   * criação quanto pra qualquer edição/conclusão.
+   */
+  upsertTask(creds: LiroCredentials, input: UpsertLiroTaskInput) {
+    return this.request<{ id: string; externalId: string }>(creds, 'post', '/tasks', { data: input });
+  }
+
+  /**
+   * Atualiza campos de uma tarefa já existente do lado do Liro, pelo `id`
+   * de lá (devolvido no upsertTask original) — NUNCA pelo nosso próprio
+   * id (ver comentário em API_EXTERNA.md do Liro sobre PATCH /tasks/:id).
+   * Todos os campos são opcionais, só manda o que mudou.
+   */
+  patchTask(
+    creds: LiroCredentials,
+    liroTaskId: string,
+    input: Partial<Omit<UpsertLiroTaskInput, 'externalId' | 'createdByEmail'>>,
+  ) {
+    return this.request<{ id: string; externalId: string | null }>(creds, 'patch', `/tasks/${liroTaskId}`, { data: input });
+  }
+
+  /**
+   * 404 (NotFoundException) quando essa tarefa nunca chegou a existir do
+   * lado do Liro (ex: falha na criação original) — quem chama decide se
+   * ignora, igual ao moveContactKanbanStage.
+   */
+  deleteTask(creds: LiroCredentials, liroTaskId: string) {
+    return this.request<{ deleted: boolean }>(creds, 'delete', `/tasks/${liroTaskId}`);
   }
 }

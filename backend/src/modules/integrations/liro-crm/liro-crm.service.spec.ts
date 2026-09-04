@@ -123,3 +123,413 @@ describe('LiroCrmService — dedupe de reentrega do webhook', () => {
     expect(prisma.lead.findMany).toHaveBeenCalledTimes(2);
   });
 });
+
+// Sincronização de tarefas — Aster → Liro (pushTaskCreate/Update/Delete,
+// chamados por ActivitiesService). Melhor esforço: nunca lança, só loga.
+describe('LiroCrmService — sincronização de tarefas (Aster → Liro)', () => {
+  let service: LiroCrmService;
+  let prisma: any;
+  let connector: any;
+  const cipher = new SecretCipher({ get: () => 'chave-de-teste-32-bytes-bem-grande' } as any);
+  const orgConfigurada = {
+    id: 'org-1',
+    liroCrmApiKeyEncrypted: cipher.encrypt('chave-liro'),
+    liroCrmBaseUrl: 'https://liro.example.com',
+  };
+
+  beforeEach(() => {
+    prisma = {
+      organization: {
+        findUnique: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        update: jest.fn().mockResolvedValue({ liroCrmTaskSyncFailureCount: 1 }),
+      },
+      activity: { findFirst: jest.fn(), update: jest.fn().mockResolvedValue({}) },
+    };
+    connector = {
+      upsertTask: jest.fn().mockResolvedValue({ id: 'liro-task-1', externalId: 'activity-1' }),
+      patchTask: jest.fn().mockResolvedValue({ id: 'liro-task-1', externalId: 'activity-1' }),
+      deleteTask: jest.fn().mockResolvedValue({ deleted: true }),
+    };
+    service = new LiroCrmService(
+      prisma,
+      cipher,
+      connector,
+      { log: jest.fn(), warn: jest.fn(), debug: jest.fn() } as any,
+      { get: jest.fn() } as any,
+      { publish: jest.fn() } as any,
+    );
+  });
+
+  it('pushTaskCreate: integração não configurada — nem chama o Liro', async () => {
+    prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', liroCrmApiKeyEncrypted: null, liroCrmBaseUrl: null });
+
+    await service.pushTaskCreate('org-1', 'activity-1');
+
+    expect(connector.upsertTask).not.toHaveBeenCalled();
+  });
+
+  it('pushTaskCreate: cria no Liro e guarda o id devolvido em Activity.externalId', async () => {
+    prisma.organization.findUnique.mockResolvedValue(orgConfigurada);
+    prisma.activity.findFirst.mockResolvedValue({
+      id: 'activity-1',
+      title: 'Ligar pro cliente',
+      dueDate: null,
+      doneAt: null,
+      externalId: null,
+      assignedTo: { email: 'vendedor@empresa.com' },
+      createdBy: { email: 'gestor@empresa.com' },
+      lead: { phone: '5511999998888' },
+    });
+
+    await service.pushTaskCreate('org-1', 'activity-1');
+
+    expect(connector.upsertTask).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ externalId: 'activity-1', title: 'Ligar pro cliente', assignedUserEmail: 'vendedor@empresa.com' }),
+    );
+    expect(prisma.activity.update).toHaveBeenCalledWith({ where: { id: 'activity-1' }, data: { externalId: 'liro-task-1' } });
+  });
+
+  it('pushTaskCreate: já tem externalId (já sincronizada antes) — não cria de novo', async () => {
+    prisma.organization.findUnique.mockResolvedValue(orgConfigurada);
+    prisma.activity.findFirst.mockResolvedValue({ id: 'activity-1', externalId: 'ja-sincronizada' });
+
+    await service.pushTaskCreate('org-1', 'activity-1');
+
+    expect(connector.upsertTask).not.toHaveBeenCalled();
+  });
+
+  it('pushTaskUpdate: sem externalId ainda (criação original nunca sincronizou) — tenta criar em vez de desistir', async () => {
+    prisma.organization.findUnique.mockResolvedValue(orgConfigurada);
+    prisma.activity.findFirst.mockResolvedValue({
+      id: 'activity-2',
+      title: 'Tarefa',
+      dueDate: null,
+      doneAt: null,
+      externalId: null,
+      assignedTo: null,
+      createdBy: null,
+      lead: null,
+    });
+
+    await service.pushTaskUpdate('org-1', 'activity-2');
+
+    expect(connector.upsertTask).toHaveBeenCalled();
+    expect(connector.patchTask).not.toHaveBeenCalled();
+  });
+
+  it('pushTaskUpdate: com externalId, atualiza por lá (PATCH pelo id do Liro)', async () => {
+    prisma.organization.findUnique.mockResolvedValue(orgConfigurada);
+    prisma.activity.findFirst.mockResolvedValue({
+      id: 'activity-3',
+      title: 'Tarefa concluída',
+      dueDate: null,
+      doneAt: new Date(),
+      externalId: 'liro-task-3',
+      assignedTo: { email: 'a@b.com' },
+      lead: null,
+    });
+
+    await service.pushTaskUpdate('org-1', 'activity-3');
+
+    expect(connector.patchTask).toHaveBeenCalledWith(expect.anything(), 'liro-task-3', expect.objectContaining({ done: true }));
+  });
+
+  it('pushTaskDelete: sem externalId (nunca sincronizou) — nem tenta chamar o Liro', async () => {
+    await service.pushTaskDelete('org-1', null);
+
+    expect(connector.deleteTask).not.toHaveBeenCalled();
+  });
+
+  it('pushTaskDelete: com externalId, exclui por lá', async () => {
+    prisma.organization.findUnique.mockResolvedValue(orgConfigurada);
+
+    await service.pushTaskDelete('org-1', 'liro-task-4');
+
+    expect(connector.deleteTask).toHaveBeenCalledWith(expect.anything(), 'liro-task-4');
+  });
+});
+
+// Alerta de falha persistente na sincronização de tarefas — contador por
+// PUSH (não por rodada de cron, essa sincronização é orientada a evento).
+describe('LiroCrmService — alerta de falha persistente no push de tarefa', () => {
+  let service: LiroCrmService;
+  let prisma: any;
+  let connector: any;
+  let auditService: any;
+  const cipher = new SecretCipher({ get: () => 'chave-de-teste-32-bytes-bem-grande' } as any);
+  const orgConfigurada = {
+    id: 'org-1',
+    liroCrmApiKeyEncrypted: cipher.encrypt('chave-liro'),
+    liroCrmBaseUrl: 'https://liro.example.com',
+  };
+  const atividade = {
+    id: 'activity-1',
+    title: 'Tarefa',
+    dueDate: null,
+    doneAt: null,
+    externalId: null,
+    assignedTo: null,
+    createdBy: null,
+    lead: null,
+  };
+
+  beforeEach(() => {
+    prisma = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue(orgConfigurada),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        update: jest.fn(),
+      },
+      activity: { findFirst: jest.fn().mockResolvedValue(atividade), update: jest.fn().mockResolvedValue({}) },
+    };
+    connector = { upsertTask: jest.fn() };
+    auditService = { log: jest.fn().mockResolvedValue(undefined) };
+    service = new LiroCrmService(
+      prisma,
+      cipher,
+      connector,
+      auditService,
+      { get: jest.fn() } as any,
+      { publish: jest.fn() } as any,
+    );
+  });
+
+  it('sucesso zera o contador (updateMany condicional, sem alertar)', async () => {
+    connector.upsertTask.mockResolvedValue({ id: 'liro-task-1', externalId: 'activity-1' });
+
+    await service.pushTaskCreate('org-1', 'activity-1');
+
+    expect(prisma.organization.updateMany).toHaveBeenCalledWith({
+      where: { id: 'org-1', liroCrmTaskSyncFailureCount: { not: 0 } },
+      data: { liroCrmTaskSyncFailureCount: 0, liroCrmTaskSyncLastError: null },
+    });
+    expect(auditService.log).not.toHaveBeenCalled();
+  });
+
+  it('falha incrementa o contador, mas não alerta antes de cruzar o limite', async () => {
+    connector.upsertTask.mockRejectedValue(new Error('Não foi possível falar com o Liro CRM no momento.'));
+    prisma.organization.update.mockResolvedValue({ liroCrmTaskSyncFailureCount: 3 });
+
+    await service.pushTaskCreate('org-1', 'activity-1');
+
+    expect(prisma.organization.update).toHaveBeenCalledWith({
+      where: { id: 'org-1' },
+      data: { liroCrmTaskSyncFailureCount: { increment: 1 }, liroCrmTaskSyncLastError: 'Não foi possível falar com o Liro CRM no momento.' },
+    });
+    expect(auditService.log).not.toHaveBeenCalled();
+  });
+
+  it('a 5ª falha SEGUIDA grava o alerta em auditoria, exatamente uma vez', async () => {
+    connector.upsertTask.mockRejectedValue(new Error('Liro fora do ar'));
+    prisma.organization.update.mockResolvedValue({ liroCrmTaskSyncFailureCount: 5 });
+
+    await service.pushTaskCreate('org-1', 'activity-1');
+
+    expect(auditService.log).toHaveBeenCalledTimes(1);
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'org-1',
+        action: 'LIRO_CRM_TASK_SYNC_REPEATED_FAILURE',
+        metadata: expect.objectContaining({ consecutiveFailures: 5 }),
+      }),
+    );
+  });
+
+  it('a 6ª falha SEGUIDA não alerta de novo (só na hora exata em que cruza)', async () => {
+    connector.upsertTask.mockRejectedValue(new Error('Liro fora do ar'));
+    prisma.organization.update.mockResolvedValue({ liroCrmTaskSyncFailureCount: 6 });
+
+    await service.pushTaskCreate('org-1', 'activity-1');
+
+    expect(auditService.log).not.toHaveBeenCalled();
+  });
+});
+
+// Sincronização de tarefas — Liro → Aster, via handleInboundWebhook (os
+// mesmos 4 eventos que o Liro dispara). Escreve direto via Prisma —
+// nunca deve chamar de volta pushTaskCreate/Update (ping-pong).
+describe('LiroCrmService — sincronização de tarefas (Liro → Aster, via webhook)', () => {
+  let service: LiroCrmService;
+  let prisma: any;
+  const cipher = new SecretCipher({ get: () => 'chave-de-teste-32-bytes-bem-grande' } as any);
+  const org = { id: 'org-1', liroWebhookToken: 'token-tarefas', liroWebhookSigningSecretEncrypted: null };
+
+  beforeEach(() => {
+    prisma = {
+      organization: { findFirst: jest.fn().mockResolvedValue(org) },
+      activity: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn().mockResolvedValue({}),
+        delete: jest.fn().mockResolvedValue({}),
+      },
+      user: { findFirst: jest.fn() },
+      lead: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    service = new LiroCrmService(
+      prisma,
+      cipher,
+      {} as any,
+      { log: jest.fn(), warn: jest.fn(), debug: jest.fn() } as any,
+      { get: jest.fn() } as any,
+      { publish: jest.fn() } as any,
+    );
+  });
+
+  it('task_created: casa responsável/criador pelo e-mail e cria a atividade (origin=liro)', async () => {
+    prisma.user.findFirst.mockResolvedValueOnce({ id: 'user-vendedor' }); // assignedUserEmail
+    prisma.user.findFirst.mockResolvedValueOnce({ id: 'user-gestor' }); // createdByEmail
+
+    const payload = {
+      event: 'task_created',
+      task: {
+        id: 'liro-task-1',
+        title: 'Ligar pro cliente',
+        dueDate: null,
+        done: false,
+        contact: null,
+        assignedUserEmail: 'vendedor@empresa.com',
+        createdByEmail: 'gestor@empresa.com',
+      },
+    };
+
+    await service.handleInboundWebhook('token-tarefas', payload, JSON.stringify(payload), undefined);
+
+    expect(prisma.activity.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { externalId: 'liro-task-1' },
+        create: expect.objectContaining({
+          createdById: 'user-gestor',
+          assignedToId: 'user-vendedor',
+          origin: 'liro',
+          type: 'TAREFA',
+          externalId: 'liro-task-1',
+        }),
+      }),
+    );
+  });
+
+  it('sem usuário nenhum batendo por e-mail (nem responsável, nem criador) — ignora sem quebrar', async () => {
+    prisma.user.findFirst.mockResolvedValue(null);
+
+    const payload = {
+      event: 'task_created',
+      task: { id: 'liro-task-2', title: 'Tarefa órfã', assignedUserEmail: 'ninguem@empresa.com', createdByEmail: 'tambem-ninguem@empresa.com' },
+    };
+
+    await service.handleInboundWebhook('token-tarefas', payload, JSON.stringify(payload), undefined);
+
+    expect(prisma.activity.upsert).not.toHaveBeenCalled();
+  });
+
+  it('task_deleted: exclui a atividade correspondente (achada pelo externalId)', async () => {
+    prisma.activity.findFirst.mockResolvedValue({ id: 'activity-x', externalId: 'liro-task-3' });
+
+    const payload = { event: 'task_deleted', task: { id: 'liro-task-3' } };
+    await service.handleInboundWebhook('token-tarefas', payload, JSON.stringify(payload), undefined);
+
+    expect(prisma.activity.delete).toHaveBeenCalledWith({ where: { id: 'activity-x' } });
+  });
+
+  it('task_deleted: tarefa nunca existiu aqui — não quebra, não faz nada', async () => {
+    prisma.activity.findFirst.mockResolvedValue(null);
+
+    const payload = { event: 'task_deleted', task: { id: 'liro-task-inexistente' } };
+    await service.handleInboundWebhook('token-tarefas', payload, JSON.stringify(payload), undefined);
+
+    expect(prisma.activity.delete).not.toHaveBeenCalled();
+  });
+});
+
+// Sincronização retroativa/manual ("Sincronizar tarefas agora") — cobre
+// tarefa de antes da integração ligar, nos dois sentidos.
+describe('LiroCrmService — backfillTasks (sincronização retroativa de tarefas)', () => {
+  let service: LiroCrmService;
+  let prisma: any;
+  let connector: any;
+  const cipher = new SecretCipher({ get: () => 'chave-de-teste-32-bytes-bem-grande' } as any);
+  const orgConfigurada = {
+    id: 'org-1',
+    liroCrmApiKeyEncrypted: cipher.encrypt('chave-liro'),
+    liroCrmBaseUrl: 'https://liro.example.com',
+  };
+
+  beforeEach(() => {
+    prisma = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue(orgConfigurada),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        update: jest.fn().mockResolvedValue({ liroCrmTaskSyncFailureCount: 1 }),
+      },
+      activity: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn(),
+        update: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+      user: { findFirst: jest.fn().mockResolvedValue(null) },
+      lead: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    connector = { upsertTask: jest.fn(), listTasks: jest.fn().mockResolvedValue([]) };
+    service = new LiroCrmService(
+      prisma,
+      cipher,
+      connector,
+      { log: jest.fn(), warn: jest.fn(), debug: jest.fn() } as any,
+      { get: jest.fn() } as any,
+      { publish: jest.fn() } as any,
+    );
+  });
+
+  it('integração não configurada — lança em vez de fingir que sincronizou', async () => {
+    prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', liroCrmApiKeyEncrypted: null, liroCrmBaseUrl: null });
+
+    await expect(service.backfillTasks('org-1')).rejects.toThrow();
+    expect(connector.listTasks).not.toHaveBeenCalled();
+  });
+
+  it('empurra toda Activity local sem externalId ainda, uma a uma', async () => {
+    prisma.activity.findMany.mockResolvedValue([{ id: 'activity-1' }, { id: 'activity-2' }]);
+    prisma.activity.findFirst.mockImplementation(({ where }: any) =>
+      Promise.resolve({ id: where.id, title: 'Tarefa', dueDate: null, doneAt: null, externalId: null, assignedTo: null, createdBy: null, lead: null }),
+    );
+    connector.upsertTask.mockResolvedValue({ id: 'liro-task-x', externalId: 'ignorado' });
+
+    const resultado = await service.backfillTasks('org-1');
+
+    expect(connector.upsertTask).toHaveBeenCalledTimes(2);
+    expect(resultado.enviadasParaLiro).toBe(2);
+  });
+
+  it('puxa as tarefas do Liro e aplica cada uma via processTaskEvent (upsert por externalId)', async () => {
+    prisma.user.findFirst.mockResolvedValue({ id: 'user-1' });
+    connector.listTasks.mockResolvedValue([
+      { id: 'liro-task-1', externalId: null, title: 'Tarefa 1', done: false, assignedUserEmail: 'a@b.com', createdByEmail: 'a@b.com', contact: null },
+      { id: 'liro-task-2', externalId: null, title: 'Tarefa 2', done: true, assignedUserEmail: 'a@b.com', createdByEmail: 'a@b.com', contact: null },
+    ]);
+
+    const resultado = await service.backfillTasks('org-1');
+
+    expect(prisma.activity.upsert).toHaveBeenCalledTimes(2);
+    expect(resultado.recebidasDoLiro).toBe(2);
+  });
+
+  it('falha ao puxar do Liro não lança — devolve recebidasDoLiro: 0 e não perde o que já foi enviado', async () => {
+    prisma.activity.findMany.mockResolvedValue([{ id: 'activity-1' }]);
+    prisma.activity.findFirst.mockResolvedValue({
+      id: 'activity-1',
+      title: 'Tarefa',
+      dueDate: null,
+      doneAt: null,
+      externalId: null,
+      assignedTo: null,
+      createdBy: null,
+      lead: null,
+    });
+    connector.upsertTask.mockResolvedValue({ id: 'liro-task-x', externalId: 'ignorado' });
+    connector.listTasks.mockRejectedValue(new Error('Liro fora do ar'));
+
+    await expect(service.backfillTasks('org-1')).resolves.toEqual({ enviadasParaLiro: 1, recebidasDoLiro: 0 });
+  });
+});
