@@ -14,4 +14,5 @@ export const DASHBOARD_WIDGETS: DashboardWidgetDef[] = [
   { key: 'cashFlow', label: 'Gráfico de fluxo de caixa' },
   { key: 'funnel', label: 'Funil de vendas' },
   { key: 'activity', label: 'Atividade recente (auditoria)' },
+  { key: 'tasksByOperator', label: 'Tarefas por operador' },
 ];

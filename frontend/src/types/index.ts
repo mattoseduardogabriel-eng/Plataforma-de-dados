@@ -173,6 +173,17 @@ export interface TeamPerformance {
   activitiesPending: number;
 }
 
+export interface TasksByOperator {
+  userId: string;
+  name: string;
+  role: Role;
+  criadas: number;
+  atribuidas: number;
+  concluidas: number;
+  pendentes: number;
+  atrasadas: number;
+}
+
 // ── Financeiro ──────────────────────────────────────────────────────────
 export type FinanceType = 'RECEITA' | 'DESPESA';
 export type TransactionStatus = 'PENDENTE' | 'PAGO' | 'ATRASADO' | 'CANCELADO';

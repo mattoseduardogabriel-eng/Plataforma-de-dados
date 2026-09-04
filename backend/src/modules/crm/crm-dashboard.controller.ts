@@ -19,4 +19,9 @@ export class CrmDashboardController {
   team(@CurrentUser() user: AuthenticatedUser) {
     return this.dashboardService.teamPerformance(user.organizationId);
   }
+
+  @Get('tasks-by-operator')
+  tasksByOperator(@CurrentUser() user: AuthenticatedUser) {
+    return this.dashboardService.tasksByOperator(user.organizationId);
+  }
 }
