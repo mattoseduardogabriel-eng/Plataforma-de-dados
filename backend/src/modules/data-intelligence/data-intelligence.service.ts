@@ -117,14 +117,22 @@ export class DataIntelligenceService {
 
   async history(
     organizationId: string,
-    filters: { type?: DataQueryType; targetDocument?: string },
+    filters: { type?: DataQueryType; targetDocument?: string; dataInicio?: string; dataFim?: string },
     pagination: { skip?: number; take?: number },
   ) {
     const where: Prisma.DataQueryWhereInput = {
       organizationId,
       type: filters.type,
-      targetDocument: filters.targetDocument?.replace(/\D/g, ''),
+      // "contains" (não igualdade exata) — dá pra achar uma consulta
+      // antiga digitando só uma parte do CNPJ/CPF/telefone, sem precisar
+      // lembrar o número inteiro certinho.
+      targetDocument: filters.targetDocument ? { contains: filters.targetDocument.replace(/\D/g, '') } : undefined,
     };
+    if (filters.dataInicio || filters.dataFim) {
+      where.createdAt = {};
+      if (filters.dataInicio) where.createdAt.gte = new Date(`${filters.dataInicio}T00:00:00`);
+      if (filters.dataFim) where.createdAt.lte = new Date(`${filters.dataFim}T23:59:59.999`);
+    }
     const [items, total] = await this.prisma.$transaction([
       this.prisma.dataQuery.findMany({
         where,
