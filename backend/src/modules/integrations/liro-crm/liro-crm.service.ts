@@ -5,7 +5,7 @@ import { DocumentType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { SecretCipher } from '../../../common/crypto/secret-cipher';
 import { AuditService } from '../../audit/audit.service';
-import { LiroCrmConnector, LiroCredentials, UpsertLiroTaskInput } from './liro-crm.connector';
+import { LiroCrmConnector, LiroCredentials, LiroTask, UpsertLiroTaskInput } from './liro-crm.connector';
 import { SaveLiroCrmCredentialsDto } from './dto/save-credentials.dto';
 import { SetStageMappingDto } from './dto/set-stage-mapping.dto';
 import { LiroContact } from './liro-crm.connector';
@@ -698,6 +698,53 @@ export class LiroCrmService {
       this.logger.warn(`Não foi possível excluir a tarefa (id ${externalId}) no Liro CRM: ${mensagem}`);
       await this.registrarResultadoPushTarefa(organizationId, mensagem);
     }
+  }
+
+  /**
+   * Sincronização retroativa/manual de tarefas — chamada sob demanda
+   * (botão "Sincronizar tarefas agora", não automática) porque só o
+   * push/webhook em tempo real não cobre dois casos: tarefa que já
+   * existia ANTES da integração conectar, e uma sincronização
+   * individual que falhou e nunca foi reprocessada (ex: integração
+   * caiu bem na hora de criar, e a tarefa nunca mais foi editada pra
+   * disparar um novo push). Faz os dois sentidos:
+   *
+   * - Aster → Liro: toda Activity local (origin implícito "local", sem
+   *   externalId ainda) chama pushTaskCreate — o mesmo método que roda
+   *   normalmente ao criar uma tarefa, só que em lote aqui.
+   * - Liro → Aster: puxa TODAS as tarefas de lá (GET /tasks, sem
+   *   `since` — silencioso e idempotente reprocessar uma que já
+   *   sincronizou, upsert por externalId) e aplica cada uma com o
+   *   mesmo processTaskEvent do webhook, direto no banco.
+   *
+   * Nunca lança — cada lado roda o próprio try/catch, uma falha não
+   * derruba a outra metade nem o restante do lote.
+   */
+  async backfillTasks(organizationId: string): Promise<{ enviadasParaLiro: number; recebidasDoLiro: number }> {
+    const creds = await this.getCredentials(organizationId);
+
+    const pendentes = await this.prisma.activity.findMany({
+      where: { organizationId, externalId: null },
+      select: { id: true },
+    });
+    for (const atividade of pendentes) {
+      await this.pushTaskCreate(organizationId, atividade.id);
+    }
+
+    let recebidasDoLiro = 0;
+    try {
+      const tarefasDoLiro: LiroTask[] = await this.connector.listTasks(creds);
+      for (const task of tarefasDoLiro) {
+        await this.processTaskEvent(organizationId, 'task_created', { task });
+        recebidasDoLiro += 1;
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Sincronização retroativa de tarefas (org ${organizationId}): falha ao puxar tarefas do Liro CRM: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+
+    return { enviadasParaLiro: pendentes.length, recebidasDoLiro };
   }
 
   /**

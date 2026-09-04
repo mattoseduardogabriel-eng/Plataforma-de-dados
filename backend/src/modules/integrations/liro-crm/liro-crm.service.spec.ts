@@ -441,3 +441,95 @@ describe('LiroCrmService — sincronização de tarefas (Liro → Aster, via web
     expect(prisma.activity.delete).not.toHaveBeenCalled();
   });
 });
+
+// Sincronização retroativa/manual ("Sincronizar tarefas agora") — cobre
+// tarefa de antes da integração ligar, nos dois sentidos.
+describe('LiroCrmService — backfillTasks (sincronização retroativa de tarefas)', () => {
+  let service: LiroCrmService;
+  let prisma: any;
+  let connector: any;
+  const cipher = new SecretCipher({ get: () => 'chave-de-teste-32-bytes-bem-grande' } as any);
+  const orgConfigurada = {
+    id: 'org-1',
+    liroCrmApiKeyEncrypted: cipher.encrypt('chave-liro'),
+    liroCrmBaseUrl: 'https://liro.example.com',
+  };
+
+  beforeEach(() => {
+    prisma = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue(orgConfigurada),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        update: jest.fn().mockResolvedValue({ liroCrmTaskSyncFailureCount: 1 }),
+      },
+      activity: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn(),
+        update: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+      user: { findFirst: jest.fn().mockResolvedValue(null) },
+      lead: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    connector = { upsertTask: jest.fn(), listTasks: jest.fn().mockResolvedValue([]) };
+    service = new LiroCrmService(
+      prisma,
+      cipher,
+      connector,
+      { log: jest.fn(), warn: jest.fn(), debug: jest.fn() } as any,
+      { get: jest.fn() } as any,
+      { publish: jest.fn() } as any,
+    );
+  });
+
+  it('integração não configurada — lança em vez de fingir que sincronizou', async () => {
+    prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', liroCrmApiKeyEncrypted: null, liroCrmBaseUrl: null });
+
+    await expect(service.backfillTasks('org-1')).rejects.toThrow();
+    expect(connector.listTasks).not.toHaveBeenCalled();
+  });
+
+  it('empurra toda Activity local sem externalId ainda, uma a uma', async () => {
+    prisma.activity.findMany.mockResolvedValue([{ id: 'activity-1' }, { id: 'activity-2' }]);
+    prisma.activity.findFirst.mockImplementation(({ where }: any) =>
+      Promise.resolve({ id: where.id, title: 'Tarefa', dueDate: null, doneAt: null, externalId: null, assignedTo: null, createdBy: null, lead: null }),
+    );
+    connector.upsertTask.mockResolvedValue({ id: 'liro-task-x', externalId: 'ignorado' });
+
+    const resultado = await service.backfillTasks('org-1');
+
+    expect(connector.upsertTask).toHaveBeenCalledTimes(2);
+    expect(resultado.enviadasParaLiro).toBe(2);
+  });
+
+  it('puxa as tarefas do Liro e aplica cada uma via processTaskEvent (upsert por externalId)', async () => {
+    prisma.user.findFirst.mockResolvedValue({ id: 'user-1' });
+    connector.listTasks.mockResolvedValue([
+      { id: 'liro-task-1', externalId: null, title: 'Tarefa 1', done: false, assignedUserEmail: 'a@b.com', createdByEmail: 'a@b.com', contact: null },
+      { id: 'liro-task-2', externalId: null, title: 'Tarefa 2', done: true, assignedUserEmail: 'a@b.com', createdByEmail: 'a@b.com', contact: null },
+    ]);
+
+    const resultado = await service.backfillTasks('org-1');
+
+    expect(prisma.activity.upsert).toHaveBeenCalledTimes(2);
+    expect(resultado.recebidasDoLiro).toBe(2);
+  });
+
+  it('falha ao puxar do Liro não lança — devolve recebidasDoLiro: 0 e não perde o que já foi enviado', async () => {
+    prisma.activity.findMany.mockResolvedValue([{ id: 'activity-1' }]);
+    prisma.activity.findFirst.mockResolvedValue({
+      id: 'activity-1',
+      title: 'Tarefa',
+      dueDate: null,
+      doneAt: null,
+      externalId: null,
+      assignedTo: null,
+      createdBy: null,
+      lead: null,
+    });
+    connector.upsertTask.mockResolvedValue({ id: 'liro-task-x', externalId: 'ignorado' });
+    connector.listTasks.mockRejectedValue(new Error('Liro fora do ar'));
+
+    await expect(service.backfillTasks('org-1')).resolves.toEqual({ enviadasParaLiro: 1, recebidasDoLiro: 0 });
+  });
+});

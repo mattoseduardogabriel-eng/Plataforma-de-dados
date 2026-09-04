@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type {
+  LiroCrmBackfillTasksResult,
   LiroCrmStatus,
   LiroCrmSyncResult,
   LiroKanbanStage,
@@ -46,6 +47,17 @@ export function useSyncLiroCrmContacts() {
       qc.invalidateQueries({ queryKey: ['integrations', 'liro-crm'] });
       qc.invalidateQueries({ queryKey: ['crm', 'leads'] });
     },
+  });
+}
+
+// "Sincronizar tarefas agora" — cobre tarefa de antes da integração
+// conectar, ou uma sincronização individual que falhou e nunca
+// reprocessou sozinha (ver LiroCrmService.backfillTasks no backend).
+export function useBackfillLiroCrmTasks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => (await api.post<LiroCrmBackfillTasksResult>('/integrations/liro-crm/tasks/backfill')).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm', 'activities'] }),
   });
 }
 

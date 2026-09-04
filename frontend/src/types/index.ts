@@ -143,6 +143,9 @@ export interface Activity {
   lead?: { id: string; name: string } | null;
   deal?: { id: string; title: string } | null;
   createdAt: string;
+  // 'local' = nasceu aqui; 'liro' = veio do Liro CRM (sincronização de
+  // tarefas), ver docs/INTEGRACAO-LIRO-CRM.md.
+  origin?: string;
 }
 
 export interface CrmFunnelStage {
@@ -388,6 +391,11 @@ export interface LiroCrmSyncResult {
   created: number;
   updated: number;
   total: number;
+}
+
+export interface LiroCrmBackfillTasksResult {
+  enviadasParaLiro: number;
+  recebidasDoLiro: number;
 }
 
 export interface LiroKanbanStage {

@@ -53,6 +53,15 @@ export class LiroCrmController {
     return this.liroCrmService.pushTagForLead(user.organizationId, user.id, leadId, dto.tagName);
   }
 
+  // "Sincronizar tarefas agora" — só o push/webhook em tempo real não
+  // cobre tarefa de antes da integração conectar, ou uma sincronização
+  // individual que falhou e nunca reprocessou sozinha (ver
+  // LiroCrmService.backfillTasks).
+  @Post('tasks/backfill')
+  backfillTasks(@CurrentUser() user: AuthenticatedUser) {
+    return this.liroCrmService.backfillTasks(user.organizationId);
+  }
+
   // --- Sincronização de funil ---
 
   @Get('kanban-stages')

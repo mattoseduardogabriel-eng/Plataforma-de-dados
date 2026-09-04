@@ -195,6 +195,29 @@ mostra um aviso vermelho com a última mensagem de erro
 de contatos, só que campo/contador próprios (`taskSyncFailing` no
 `GET /integrations/liro-crm`).
 
+**Sincronização retroativa/manual ("Sincronizar tarefas agora").** O
+push/webhook em tempo real só cobre tarefa criada/editada **depois** da
+integração conectar — uma tarefa de antes, ou uma sincronização
+individual que falhou e nunca foi reprocessada (a integração caiu bem na
+hora, e ninguém tocou mais naquela tarefa), fica pra trás pra sempre.
+`POST /integrations/liro-crm/tasks/backfill` (botão na tela de
+Integrações) roda `LiroCrmService.backfillTasks`, nos dois sentidos:
+- Aster → Liro: toda `Activity` local sem `externalId` ainda chama
+  `pushTaskCreate` (o mesmo método do fluxo normal, em lote).
+- Liro → Aster: `GET /tasks` (sem `since` — puxa tudo) e aplica cada
+  tarefa via `processTaskEvent`, igual a receber o evento `task_created`
+  por webhook — idempotente, reprocessar uma tarefa já sincronizada não
+  duplica nada (upsert por `externalId`).
+
+Melhor esforço nos dois sentidos — uma falha só ao puxar do Liro (ex:
+integração fora do ar bem nessa hora) não desfaz o que já foi enviado
+pra lá, e vice-versa.
+
+**Indicação visual de origem.** `Activity.origin` (`'local'` ou `'liro'`)
+e `Task.origin` (`'local'` ou `'aster'`) aparecem como um ícone de link
+ao lado do título da tarefa, nas telas de Tarefas dos dois sistemas — só
+informativo, não muda nenhum comportamento.
+
 ## Como o telefone é casado entre os dois sistemas
 
 A mesma pessoa salva de formas diferentes (com/sem `+55`, com/sem o 9º
@@ -250,6 +273,7 @@ openLiroCrmConversation` no lado daqui e o tratamento de `?phone=` em
 | `GET /kanban-stages` | Montar a tela de mapeamento de funil |
 | `PATCH /contacts/:id/kanban-stage` | Refletir negócio movido (Aster → Liro) |
 | `POST /webhooks` | Auto-registro pra receber `conversation_moved`/`conversation_deleted`/os 4 eventos de tarefa |
+| `GET /tasks` | Sincronização retroativa/manual (backfill) — puxar tudo |
 | `POST /tasks` | Criar uma tarefa no Liro (upsert por `externalId`, só na criação) |
 | `PATCH /tasks/:id` | Editar/concluir uma tarefa no Liro, pelo id de lá |
 | `DELETE /tasks/:id` | Excluir uma tarefa no Liro, pelo id de lá |

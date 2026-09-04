@@ -7,6 +7,7 @@ import {
   useRemoveLiroCrmCredentials,
   useTestLiroCrmConnection,
   useSyncLiroCrmContacts,
+  useBackfillLiroCrmTasks,
   useLiroCrmKanbanStages,
   useSetLiroCrmStageMapping,
 } from '@/hooks/useIntegrations';
@@ -21,6 +22,7 @@ export function LiroCrmIntegrationCard({ isAdmin }: { isAdmin: boolean }) {
   const remove = useRemoveLiroCrmCredentials();
   const test = useTestLiroCrmConnection();
   const sync = useSyncLiroCrmContacts();
+  const backfillTasks = useBackfillLiroCrmTasks();
   const { data: pipelines } = usePipelines();
   const { data: liroStages } = useLiroCrmKanbanStages(!!status?.configured);
   const setMapping = useSetLiroCrmStageMapping();
@@ -71,6 +73,19 @@ export function LiroCrmIntegrationCard({ isAdmin }: { isAdmin: boolean }) {
       });
     } catch (err) {
       toast({ tone: 'error', title: 'Erro ao sincronizar', description: extractErrorMessage(err) });
+    }
+  };
+
+  const onBackfillTasks = async () => {
+    try {
+      const result = await backfillTasks.mutateAsync();
+      toast({
+        tone: 'success',
+        title: 'Sincronização de tarefas concluída',
+        description: `${result.enviadasParaLiro} enviada(s) pra lá, ${result.recebidasDoLiro} recebida(s) de lá.`,
+      });
+    } catch (err) {
+      toast({ tone: 'error', title: 'Erro ao sincronizar tarefas', description: extractErrorMessage(err) });
     }
   };
 
@@ -135,6 +150,9 @@ export function LiroCrmIntegrationCard({ isAdmin }: { isAdmin: boolean }) {
                 </Button>
                 <Button size="sm" onClick={onSync} loading={sync.isPending}>
                   <RefreshCw className="h-4 w-4" /> Sincronizar contatos agora
+                </Button>
+                <Button size="sm" variant="outline" onClick={onBackfillTasks} loading={backfillTasks.isPending}>
+                  <RefreshCw className="h-4 w-4" /> Sincronizar tarefas agora
                 </Button>
                 <Button size="sm" variant="destructive" onClick={onRemove} loading={remove.isPending}>
                   <Unlink className="h-4 w-4" /> Desconectar

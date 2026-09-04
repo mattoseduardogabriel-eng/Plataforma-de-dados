@@ -57,6 +57,19 @@ export interface UpsertLiroTaskInput {
   contactPhoneNumber?: string | null;
 }
 
+// Formato de item devolvido por GET /tasks — mesmo `task` dos 4 eventos
+// de webhook, ver seção "Tarefas" em API_EXTERNA.md do Liro.
+export interface LiroTask {
+  id: string;
+  externalId: string | null;
+  title: string;
+  dueDate?: string | null;
+  done: boolean;
+  contact?: { phoneNumber?: string; name?: string } | null;
+  assignedUserEmail?: string | null;
+  createdByEmail?: string | null;
+}
+
 /**
  * Cliente HTTP fiel à "API externa do Liro CRM" (server-to-server, chave
  * `liro_<id>_<segredo>` no header Authorization). Ver
@@ -250,6 +263,17 @@ export class LiroCrmConnector {
       '/webhooks',
       { data: { url } },
     );
+  }
+
+  /**
+   * Lista tarefas do lado do Liro (`?since=` opcional) — usado só pra
+   * sincronização retroativa/manual (ver LiroCrmService.backfillTasks):
+   * tarefa criada lá ANTES da integração conectar (ou que nunca chegou
+   * via webhook) nunca sincroniza sozinha, então isso puxa sob demanda.
+   */
+  async listTasks(creds: LiroCredentials, params: { since?: string } = {}): Promise<LiroTask[]> {
+    const raw = await this.request<unknown>(creds, 'get', '/tasks', { params });
+    return this.unwrapList<LiroTask>(raw);
   }
 
   /**

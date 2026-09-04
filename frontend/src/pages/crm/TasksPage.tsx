@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Phone, Users2, Mail, FileText, ListChecks, StickyNote, Check, Trash2 } from 'lucide-react';
+import { Plus, Phone, Users2, Mail, FileText, ListChecks, StickyNote, Check, Trash2, Link2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, Card, Input, Label, Select, Textarea, Alert, Badge, Spinner, EmptyState } from '@/components/ui/primitives';
 import { Dialog } from '@/components/ui/dialog';
@@ -124,7 +124,14 @@ function TaskRow({ task }: { task: Activity }) {
       </button>
       <Icon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
       <div className="min-w-0 flex-1">
-        <p className={cn('text-sm font-medium text-slate-800', isDone && 'line-through')}>{task.title}</p>
+        <p className={cn('flex items-center gap-1.5 text-sm font-medium text-slate-800', isDone && 'line-through')}>
+          {task.title}
+          {task.origin === 'liro' && (
+            <span title="Sincronizada do Liro CRM" className="text-slate-400">
+              <Link2 className="h-3 w-3" />
+            </span>
+          )}
+        </p>
         {task.notes && <p className="text-xs text-slate-500">{task.notes}</p>}
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
           {task.assignedTo && <span>Responsável: {task.assignedTo.name}</span>}
