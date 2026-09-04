@@ -101,6 +101,12 @@ model Organization {
   // Mensagem da última falha do sync automático — só informativo, exibido
   // na tela de Integrações quando liroCrmSyncFailureCount cruza o limite.
   liroCrmLastSyncError    String?
+  // Mesma ideia acima, mas pra sincronização de TAREFAS (pushTaskCreate/
+  // Update/Delete) — evento a evento, não por rodada de cron (essa
+  // sincronização não é periódica). Zera a cada push com sucesso; conta
+  // falhas SEGUIDAS (ver LiroCrmService.registrarResultadoPushTarefa).
+  liroCrmTaskSyncFailureCount Int    @default(0)
+  liroCrmTaskSyncLastError    String?
 
   personalDataProviderConfig PersonalDataProviderConfig?
 

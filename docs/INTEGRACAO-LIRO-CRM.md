@@ -175,6 +175,26 @@ logado como aviso; não quebra a operação de quem criou).
   `pushTaskDelete` por atividade removida, individualmente, sem travar a
   resposta do "limpar tudo".
 
+**Retry com backoff.** Toda chamada HTTP do `LiroCrmConnector` (não só as
+de tarefa — contatos, tags, funil, tudo) tenta até 3 vezes (2s, depois 6s
+de espera) antes de desistir, mas **só** pra falha genuinamente transitória
+— sem resposta nenhuma (rede caiu, timeout) ou erro do **servidor** do
+Liro (5xx). `400`/`401`/`404` (nosso pedido errado, chave inválida,
+recurso que não existe) falham na hora, sem esperar — tentar de novo não
+resolve. Mesmo padrão (3 tentativas, 2s/6s) do envio de webhook Liro →
+Aster (`dispatch.js`/`enviarUm` do lado do Liro).
+
+**Alerta de falha persistente (tarefas).** Diferente do sync de contatos
+(que conta rodadas de cron), a sincronização de tarefas é orientada a
+evento — `LiroCrmService.registrarResultadoPushTarefa` conta quantos
+**pushes seguidos** (`pushTaskCreate`/`Update`/`Delete`) falharam pra cada
+organização, zerando a cada sucesso. Ao cruzar 5 falhas seguidas, grava um
+`AuditLog` (`LIRO_CRM_TASK_SYNC_REPEATED_FAILURE`) e a tela de Integrações
+mostra um aviso vermelho com a última mensagem de erro
+(`liroCrmTaskSyncLastError`) — mesmo tratamento visual do alerta de sync
+de contatos, só que campo/contador próprios (`taskSyncFailing` no
+`GET /integrations/liro-crm`).
+
 ## Como o telefone é casado entre os dois sistemas
 
 A mesma pessoa salva de formas diferentes (com/sem `+55`, com/sem o 9º

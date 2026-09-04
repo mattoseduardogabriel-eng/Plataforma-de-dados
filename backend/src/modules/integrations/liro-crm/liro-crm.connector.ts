@@ -68,6 +68,25 @@ export class LiroCrmConnector {
 
   constructor(private readonly httpService: HttpService) {}
 
+  // Retry com espera crescente — só pra falha GENUINAMENTE transitória:
+  // sem resposta nenhuma (rede caiu, timeout) ou erro do SERVIDOR do Liro
+  // (5xx, quebrou do lado de lá). 4xx (400/401/404 — nosso pedido errado,
+  // chave inválida, recurso que não existe) nunca se resolve tentando de
+  // novo, falha na hora, sem esperar. Mesmo padrão (3 tentativas, 2s/6s)
+  // do envio de webhook Liro -> Aster, ver dispatch.js/enviarUm do lado
+  // do Liro — antes dessa mudança, uma instabilidade de alguns segundos
+  // bem na hora de empurrar uma tarefa/tag/etapa perdia a sincronização
+  // pra sempre (só reprocessava numa PRÓXIMA edição, se houvesse).
+  private static readonly MAX_TENTATIVAS = 3;
+  private static readonly ESPERA_ENTRE_TENTATIVAS_MS = [2000, 6000];
+
+  // Isolado num método próprio (em vez de setTimeout direto ali embaixo)
+  // só pra dar pra sobrescrever/espiar em teste sem esperar de verdade —
+  // mesma razão do enviarUm/esperar no dispatch.js do Liro.
+  protected esperar(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   private async request<T>(
     creds: LiroCredentials,
     method: 'get' | 'post' | 'patch' | 'delete',
@@ -75,37 +94,55 @@ export class LiroCrmConnector {
     options: { params?: Record<string, unknown>; data?: unknown } = {},
   ): Promise<T> {
     const baseUrl = creds.baseUrl.replace(/\/+$/, '');
-    try {
-      const { data } = await firstValueFrom(
-        this.httpService.request<T>({
-          method,
-          url: `${baseUrl}${path}`,
-          params: options.params,
-          data: options.data,
-          timeout: 10000,
-          headers: { Authorization: `Bearer ${creds.apiKey}` },
-        }),
-      );
-      return data;
-    } catch (error) {
-      const axiosError = error as AxiosError<{ error?: string }>;
-      const status = axiosError.response?.status;
-      const message = axiosError.response?.data?.error;
+    const url = `${baseUrl}${path}`;
 
-      if (status === 401) {
-        throw new UnauthorizedException(
-          message ?? 'Chave de API do Liro CRM ausente, inválida ou revogada.',
+    for (let tentativa = 1; tentativa <= LiroCrmConnector.MAX_TENTATIVAS; tentativa++) {
+      try {
+        const { data } = await firstValueFrom(
+          this.httpService.request<T>({
+            method,
+            url,
+            params: options.params,
+            data: options.data,
+            timeout: 10000,
+            headers: { Authorization: `Bearer ${creds.apiKey}` },
+          }),
         );
+        return data;
+      } catch (error) {
+        const axiosError = error as AxiosError<{ error?: string }>;
+        const status = axiosError.response?.status;
+        const message = axiosError.response?.data?.error;
+
+        if (status === 401) {
+          throw new UnauthorizedException(
+            message ?? 'Chave de API do Liro CRM ausente, inválida ou revogada.',
+          );
+        }
+        if (status === 404) {
+          throw new NotFoundException(message ?? 'Recurso não encontrado no Liro CRM.');
+        }
+        if (status === 400) {
+          throw new BadGatewayException(message ?? 'Requisição rejeitada pelo Liro CRM.');
+        }
+
+        // Sem status (rede/timeout) ou 5xx — vale tentar de novo, se
+        // ainda sobrar tentativa.
+        if (tentativa < LiroCrmConnector.MAX_TENTATIVAS) {
+          this.logger.warn(
+            `Falha ao chamar Liro CRM (${method.toUpperCase()} ${path}), tentativa ${tentativa}/${LiroCrmConnector.MAX_TENTATIVAS}: ${axiosError.message} — tentando de novo.`,
+          );
+          await this.esperar(LiroCrmConnector.ESPERA_ENTRE_TENTATIVAS_MS[tentativa - 1]);
+          continue;
+        }
+
+        this.logger.error(`Falha ao chamar Liro CRM (${method.toUpperCase()} ${path}) após ${LiroCrmConnector.MAX_TENTATIVAS} tentativas: ${axiosError.message}`);
+        throw new BadGatewayException('Não foi possível falar com o Liro CRM no momento.');
       }
-      if (status === 404) {
-        throw new NotFoundException(message ?? 'Recurso não encontrado no Liro CRM.');
-      }
-      if (status === 400) {
-        throw new BadGatewayException(message ?? 'Requisição rejeitada pelo Liro CRM.');
-      }
-      this.logger.error(`Falha ao chamar Liro CRM (${method.toUpperCase()} ${path}): ${axiosError.message}`);
-      throw new BadGatewayException('Não foi possível falar com o Liro CRM no momento.');
     }
+    // Inalcançável (o loop sempre retorna ou lança) — só pra o TypeScript
+    // não reclamar de "not all code paths return a value".
+    throw new BadGatewayException('Não foi possível falar com o Liro CRM no momento.');
   }
 
   async listContacts(

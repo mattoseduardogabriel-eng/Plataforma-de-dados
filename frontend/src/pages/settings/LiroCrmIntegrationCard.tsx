@@ -122,6 +122,12 @@ export function LiroCrmIntegrationCard({ isAdmin }: { isAdmin: boolean }) {
                 {status.lastSyncError ? ` — ${status.lastSyncError}` : ''}. Confira a chave de API e a Base URL.
               </p>
             )}
+            {status.taskSyncFailing && (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                ⚠ A sincronização de tarefas está falhando há {status.taskSyncFailureCount} tentativa(s) seguida(s)
+                {status.lastTaskSyncError ? ` — ${status.lastTaskSyncError}` : ''}. Confira a chave de API e a Base URL.
+              </p>
+            )}
             {isAdmin && (
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={onTest} loading={test.isPending}>

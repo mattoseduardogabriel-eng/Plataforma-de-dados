@@ -139,7 +139,11 @@ describe('LiroCrmService — sincronização de tarefas (Aster → Liro)', () =>
 
   beforeEach(() => {
     prisma = {
-      organization: { findUnique: jest.fn() },
+      organization: {
+        findUnique: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        update: jest.fn().mockResolvedValue({ liroCrmTaskSyncFailureCount: 1 }),
+      },
       activity: { findFirst: jest.fn(), update: jest.fn().mockResolvedValue({}) },
     };
     connector = {
@@ -244,6 +248,102 @@ describe('LiroCrmService — sincronização de tarefas (Aster → Liro)', () =>
     await service.pushTaskDelete('org-1', 'liro-task-4');
 
     expect(connector.deleteTask).toHaveBeenCalledWith(expect.anything(), 'liro-task-4');
+  });
+});
+
+// Alerta de falha persistente na sincronização de tarefas — contador por
+// PUSH (não por rodada de cron, essa sincronização é orientada a evento).
+describe('LiroCrmService — alerta de falha persistente no push de tarefa', () => {
+  let service: LiroCrmService;
+  let prisma: any;
+  let connector: any;
+  let auditService: any;
+  const cipher = new SecretCipher({ get: () => 'chave-de-teste-32-bytes-bem-grande' } as any);
+  const orgConfigurada = {
+    id: 'org-1',
+    liroCrmApiKeyEncrypted: cipher.encrypt('chave-liro'),
+    liroCrmBaseUrl: 'https://liro.example.com',
+  };
+  const atividade = {
+    id: 'activity-1',
+    title: 'Tarefa',
+    dueDate: null,
+    doneAt: null,
+    externalId: null,
+    assignedTo: null,
+    createdBy: null,
+    lead: null,
+  };
+
+  beforeEach(() => {
+    prisma = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue(orgConfigurada),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        update: jest.fn(),
+      },
+      activity: { findFirst: jest.fn().mockResolvedValue(atividade), update: jest.fn().mockResolvedValue({}) },
+    };
+    connector = { upsertTask: jest.fn() };
+    auditService = { log: jest.fn().mockResolvedValue(undefined) };
+    service = new LiroCrmService(
+      prisma,
+      cipher,
+      connector,
+      auditService,
+      { get: jest.fn() } as any,
+      { publish: jest.fn() } as any,
+    );
+  });
+
+  it('sucesso zera o contador (updateMany condicional, sem alertar)', async () => {
+    connector.upsertTask.mockResolvedValue({ id: 'liro-task-1', externalId: 'activity-1' });
+
+    await service.pushTaskCreate('org-1', 'activity-1');
+
+    expect(prisma.organization.updateMany).toHaveBeenCalledWith({
+      where: { id: 'org-1', liroCrmTaskSyncFailureCount: { not: 0 } },
+      data: { liroCrmTaskSyncFailureCount: 0, liroCrmTaskSyncLastError: null },
+    });
+    expect(auditService.log).not.toHaveBeenCalled();
+  });
+
+  it('falha incrementa o contador, mas não alerta antes de cruzar o limite', async () => {
+    connector.upsertTask.mockRejectedValue(new Error('Não foi possível falar com o Liro CRM no momento.'));
+    prisma.organization.update.mockResolvedValue({ liroCrmTaskSyncFailureCount: 3 });
+
+    await service.pushTaskCreate('org-1', 'activity-1');
+
+    expect(prisma.organization.update).toHaveBeenCalledWith({
+      where: { id: 'org-1' },
+      data: { liroCrmTaskSyncFailureCount: { increment: 1 }, liroCrmTaskSyncLastError: 'Não foi possível falar com o Liro CRM no momento.' },
+    });
+    expect(auditService.log).not.toHaveBeenCalled();
+  });
+
+  it('a 5ª falha SEGUIDA grava o alerta em auditoria, exatamente uma vez', async () => {
+    connector.upsertTask.mockRejectedValue(new Error('Liro fora do ar'));
+    prisma.organization.update.mockResolvedValue({ liroCrmTaskSyncFailureCount: 5 });
+
+    await service.pushTaskCreate('org-1', 'activity-1');
+
+    expect(auditService.log).toHaveBeenCalledTimes(1);
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'org-1',
+        action: 'LIRO_CRM_TASK_SYNC_REPEATED_FAILURE',
+        metadata: expect.objectContaining({ consecutiveFailures: 5 }),
+      }),
+    );
+  });
+
+  it('a 6ª falha SEGUIDA não alerta de novo (só na hora exata em que cruza)', async () => {
+    connector.upsertTask.mockRejectedValue(new Error('Liro fora do ar'));
+    prisma.organization.update.mockResolvedValue({ liroCrmTaskSyncFailureCount: 6 });
+
+    await service.pushTaskCreate('org-1', 'activity-1');
+
+    expect(auditService.log).not.toHaveBeenCalled();
   });
 });
 

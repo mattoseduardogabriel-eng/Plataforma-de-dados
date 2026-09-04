@@ -379,6 +379,9 @@ export type LiroCrmStatus =
       syncFailing: boolean;
       syncFailureCount: number;
       lastSyncError: string | null;
+      taskSyncFailing: boolean;
+      taskSyncFailureCount: number;
+      lastTaskSyncError: string | null;
     };
 
 export interface LiroCrmSyncResult {
