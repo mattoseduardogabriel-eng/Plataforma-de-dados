@@ -11,11 +11,12 @@ import {
   Legend,
   ReferenceLine,
 } from 'recharts';
-import { TrendingUp, Wallet, Users2, ShieldAlert, Target, SlidersHorizontal } from 'lucide-react';
+import { TrendingUp, Wallet, Users2, ShieldAlert, Target, SlidersHorizontal, ListChecks } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, StatCard, Spinner, Badge, Button } from '@/components/ui/primitives';
+import { Table, Thead, Tbody, Tr, Th, Td } from '@/components/ui/table';
 import { Dialog } from '@/components/ui/dialog';
-import { useCrmOverview } from '@/hooks/useCrm';
+import { useCrmOverview, useTasksByOperator } from '@/hooks/useCrm';
 import { useCashFlow } from '@/hooks/useFinancial';
 import { usePortfolioOverview } from '@/hooks/usePostSale';
 import { useAuditLogs } from '@/hooks/useReports';
@@ -79,6 +80,7 @@ export function DashboardPage() {
   const { data: cashFlow, isLoading: loadingCashFlow } = useCashFlow(6);
   const { data: portfolio } = usePortfolioOverview();
   const { data: auditLogs } = useAuditLogs();
+  const { data: tasksByOperator } = useTasksByOperator();
   const { data: org } = useOrganization();
   const [customizeOpen, setCustomizeOpen] = useState(false);
 
@@ -283,6 +285,46 @@ export function DashboardPage() {
               </div>
             ))}
             {!auditLogs?.items.length && <p className="text-sm text-slate-400">Nenhuma atividade registrada ainda.</p>}
+          </CardContent>
+        </Card>
+      )}
+
+      {show('tasksByOperator') && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ListChecks className="h-4 w-4" /> Tarefas por operador
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {tasksByOperator?.length ? (
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>Operador</Th>
+                    <Th>Criadas</Th>
+                    <Th>Atribuídas</Th>
+                    <Th>Concluídas</Th>
+                    <Th>Pendentes</Th>
+                    <Th>Atrasadas</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {tasksByOperator.map((row) => (
+                    <Tr key={row.userId}>
+                      <Td>{row.name}</Td>
+                      <Td>{row.criadas}</Td>
+                      <Td>{row.atribuidas}</Td>
+                      <Td>{row.concluidas}</Td>
+                      <Td>{row.pendentes}</Td>
+                      <Td className={row.atrasadas > 0 ? 'font-semibold text-red-600' : undefined}>{row.atrasadas}</Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            ) : (
+              <p className="text-sm text-slate-400">Nenhuma tarefa criada ou atribuída ainda.</p>
+            )}
           </CardContent>
         </Card>
       )}

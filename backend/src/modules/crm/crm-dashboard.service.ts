@@ -103,4 +103,44 @@ export class CrmDashboardService {
       .filter((row) => ['VENDEDOR', 'GESTOR', 'ADMIN'].includes(row.role))
       .sort((a, b) => b.revenueWon - a.revenueWon);
   }
+
+  // "Tarefas" no CRM são registros de Activity (qualquer tipo, ver
+  // ActivityType) — widget do dashboard pra ver quem está criando e quem
+  // está com tarefa pendente/atrasada, sem precisar abrir a Agenda de
+  // cada operador um por um.
+  async tasksByOperator(organizationId: string) {
+    const agora = new Date();
+    const users = await this.prisma.user.findMany({
+      where: { organizationId, active: true },
+      select: { id: true, name: true, role: true },
+    });
+
+    const linhas = await Promise.all(
+      users.map(async (u) => {
+        const [criadas, atribuidas, concluidas, pendentes, atrasadas] = await Promise.all([
+          this.prisma.activity.count({ where: { organizationId, createdById: u.id } }),
+          this.prisma.activity.count({ where: { organizationId, assignedToId: u.id } }),
+          this.prisma.activity.count({ where: { organizationId, assignedToId: u.id, doneAt: { not: null } } }),
+          this.prisma.activity.count({ where: { organizationId, assignedToId: u.id, doneAt: null } }),
+          this.prisma.activity.count({
+            where: { organizationId, assignedToId: u.id, doneAt: null, dueDate: { lt: agora } },
+          }),
+        ]);
+        return {
+          userId: u.id,
+          name: u.name,
+          role: u.role,
+          criadas,
+          atribuidas,
+          concluidas,
+          pendentes,
+          atrasadas,
+        };
+      }),
+    );
+
+    // Sem tarefa nenhuma (nem criou, nem tem atribuída) não aparece —
+    // widget fica só com quem de fato usa a Agenda.
+    return linhas.filter((l) => l.criadas > 0 || l.atribuidas > 0).sort((a, b) => b.criadas - a.criadas);
+  }
 }

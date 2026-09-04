@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useRealtimeDeals } from './useRealtimeDeals';
-import type { Activity, CrmOverview, Deal, Lead, Paginated, Pipeline, TeamPerformance } from '@/types';
+import type { Activity, CrmOverview, Deal, Lead, Paginated, Pipeline, TasksByOperator, TeamPerformance } from '@/types';
 
 export function usePipelines() {
   return useQuery({
@@ -277,5 +277,12 @@ export function useTeamPerformance() {
   return useQuery({
     queryKey: ['crm', 'dashboard', 'team'],
     queryFn: async () => (await api.get<TeamPerformance[]>('/crm/dashboard/team')).data,
+  });
+}
+
+export function useTasksByOperator() {
+  return useQuery({
+    queryKey: ['crm', 'dashboard', 'tasks-by-operator'],
+    queryFn: async () => (await api.get<TasksByOperator[]>('/crm/dashboard/tasks-by-operator')).data,
   });
 }
